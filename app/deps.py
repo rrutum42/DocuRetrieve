@@ -15,6 +15,7 @@ from fastapi import Depends, Header, HTTPException
 from .api_models import Persona
 from .config import get_settings
 from .repository import InMemoryRepository, Repository, SupabaseRepository
+from .storage import NoopStorage, Storage, SupabaseStorage
 
 
 @lru_cache
@@ -27,6 +28,18 @@ def get_repository() -> Repository:
 
         return SupabaseRepository(get_supabase())
     return InMemoryRepository()
+
+
+@lru_cache
+def get_storage() -> Storage:
+    """Live: Supabase Storage. Otherwise a no-op so receipts still save (sans
+    image) with no object storage configured."""
+    settings = get_settings()
+    if settings.supabase_configured:
+        from .db import get_supabase
+
+        return SupabaseStorage(get_supabase())
+    return NoopStorage()
 
 
 def current_persona(

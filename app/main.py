@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .extraction import extract_receipt
-from .routers import personas, trips
+from .routers import personas, receipts, trips
 from .schemas import ExtractionResult
 
 app = FastAPI(title="DocuRetrieve", version="0.1.0")
@@ -35,6 +35,7 @@ app.add_middleware(
 
 app.include_router(personas.router)
 app.include_router(trips.router)
+app.include_router(receipts.router)
 
 ACCEPTED_MIME_PREFIXES = ("image/",)
 ACCEPTED_MIME_EXACT = ("application/pdf",)

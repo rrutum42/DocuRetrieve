@@ -1,29 +1,46 @@
 // A single container's ledger — either a trip (by :id) or your personal
-// "Everyday" ledger. Day 2 shows the header, members, and add-member flow;
-// the receipt list, upload, per-person totals, and ask box arrive on Day 3.
+// "Everyday" ledger. Upload a receipt -> always-confirm review -> it lands in
+// the ledger. Per-person totals and the ask box come on Day 4.
 
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import Header from '../components/Header.jsx'
 import Avatar from '../components/Avatar.jsx'
+import Ledger from '../components/Ledger.jsx'
+import ReviewCard from '../components/ReviewCard.jsx'
 import { usePersona } from '../persona.jsx'
 
 export default function TripView({ everyday = false }) {
   const { id } = useParams()
   const { persona } = usePersona()
+  const fileInput = useRef(null)
+
   const [trip, setTrip] = useState(null)
   const [personas, setPersonas] = useState({})
+  const [receipts, setReceipts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [adding, setAdding] = useState(false)
+
+  const [extracting, setExtracting] = useState(false)
+  const [review, setReview] = useState(null) // { result, file }
 
   async function load() {
     setLoading(true)
     try {
       const ps = await api.listPersonas()
       setPersonas(Object.fromEntries(ps.map((p) => [p.id, p])))
-      if (!everyday) setTrip(await api.getTrip(id))
+      if (everyday) {
+        setReceipts(await api.listPersonalReceipts())
+      } else {
+        const [t, rs] = await Promise.all([
+          api.getTrip(id),
+          api.listTripReceipts(id),
+        ])
+        setTrip(t)
+        setReceipts(rs)
+      }
       setError(null)
     } catch (e) {
       setError(e.message)
@@ -36,6 +53,35 @@ export default function TripView({ everyday = false }) {
     load()
   }, [id, everyday])
 
+  async function onFilePicked(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-picking the same file
+    if (!file) return
+    setExtracting(true)
+    setError(null)
+    try {
+      const result = await api.extract(file)
+      setReview({ result, file })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  async function saveReceipt(payload, file) {
+    const saved = await api.createReceipt(payload, file)
+    setReceipts((rs) => [saved, ...rs])
+    setReview(null)
+    return saved
+  }
+
+  async function deleteReceipt(r) {
+    if (!confirm(`Delete receipt from ${r.merchant || 'this merchant'}?`)) return
+    await api.deleteReceipt(r.id)
+    setReceipts((rs) => rs.filter((x) => x.id !== r.id))
+  }
+
   if (loading) {
     return (
       <>
@@ -45,11 +91,14 @@ export default function TripView({ everyday = false }) {
     )
   }
 
-  if (error) {
+  if (error && !review) {
     return (
       <>
         <Header />
         <div className="container">
+          <Link to="/" className="back">
+            ← All trips
+          </Link>
           <div className="banner error">{error}</div>
         </div>
       </>
@@ -57,45 +106,74 @@ export default function TripView({ everyday = false }) {
   }
 
   const title = everyday ? 'My Everyday' : trip.name
-  const members = everyday ? [] : trip.member_ids.map((mid) => personas[mid]).filter(Boolean)
+  const members = everyday
+    ? [persona]
+    : trip.member_ids.map((mid) => personas[mid]).filter(Boolean)
 
   return (
     <>
       <Header />
       <div className="container">
-        <h1 style={{ margin: '4px 0 6px', letterSpacing: '-0.02em' }}>{title}</h1>
-        <div className="card-meta" style={{ marginBottom: 24 }}>
-          {everyday ? (
-            <span>Private to {persona.name}</span>
-          ) : (
-            <>
-              <span className="avatar-stack">
-                {members.map((m) => (
-                  <Avatar key={m.id} persona={m} size={26} />
-                ))}
-              </span>
-              <span>
-                {members.map((m) => m.name).join(', ')}
-              </span>
-              <button className="btn ghost" onClick={() => setAdding(true)}>
-                + Add people
-              </button>
-            </>
-          )}
+        <Link to="/" className="back">
+          ← All trips
+        </Link>
+        <div className="trip-head">
+          <div>
+            <h1 style={{ margin: '4px 0 6px', letterSpacing: '-0.02em' }}>{title}</h1>
+            <div className="card-meta">
+              {everyday ? (
+                <span>Private to {persona.name}</span>
+              ) : (
+                <>
+                  <span className="avatar-stack">
+                    {members.map((m) => (
+                      <Avatar key={m.id} persona={m} size={26} />
+                    ))}
+                  </span>
+                  <span>{members.map((m) => m.name).join(', ')}</span>
+                  <button className="btn ghost" onClick={() => setAdding(true)}>
+                    + Add people
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/*,application/pdf"
+              style={{ display: 'none' }}
+              onChange={onFilePicked}
+            />
+            <button
+              className="btn primary"
+              onClick={() => fileInput.current?.click()}
+              disabled={extracting}
+            >
+              {extracting ? 'Reading receipt…' : '＋ Add receipt'}
+            </button>
+          </div>
         </div>
 
-        <div className="banner">
-          🚧 Receipt upload, the always-confirm review, per-person totals, and the
-          ask box land next (Day 3). This container is ready to receive them.
-        </div>
+        {error && <div className="banner error">{error}</div>}
 
-        <div className="empty">
-          <div className="big">📸</div>
-          No receipts here yet.
-        </div>
+        <Ledger receipts={receipts} personas={personas} onDelete={deleteReceipt} />
       </div>
 
-      {adding && (
+      {review && (
+        <ReviewCard
+          result={review.result}
+          file={review.file}
+          members={members}
+          currentPersona={persona}
+          tripId={everyday ? null : trip.id}
+          onClose={() => setReview(null)}
+          onSaved={saveReceipt}
+        />
+      )}
+
+      {adding && !everyday && (
         <AddPeopleModal
           trip={trip}
           personas={personas}

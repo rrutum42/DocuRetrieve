@@ -13,7 +13,12 @@ export function setPersonaId(id) {
 }
 
 async function req(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  const isForm = opts.body instanceof FormData
+  // Let the browser set the multipart boundary for FormData; JSON otherwise.
+  const headers = {
+    ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+    ...(opts.headers || {}),
+  }
   const pid = getPersonaId()
   if (pid) headers['X-Persona-Id'] = pid
 
@@ -46,4 +51,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ member_ids: memberIds }),
     }),
+
+  // Receipts
+  extract: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return req('/extract', { method: 'POST', body: fd })
+  },
+  createReceipt: (payload, file) => {
+    const fd = new FormData()
+    fd.append('payload', JSON.stringify(payload))
+    fd.append('file', file)
+    return req('/receipts', { method: 'POST', body: fd })
+  },
+  listTripReceipts: (tripId) => req('/trips/' + tripId + '/receipts'),
+  listPersonalReceipts: () => req('/receipts/personal'),
+  deleteReceipt: (id) => req('/receipts/' + id, { method: 'DELETE' }),
 }
+
+export const CATEGORIES = [
+  'groceries',
+  'dining',
+  'fuel',
+  'lodging',
+  'transport',
+  'shopping',
+  'other',
+]

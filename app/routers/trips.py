@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..api_models import AddMembers, Persona, Trip, TripCreate
+from ..api_models import AddMembers, Persona, Receipt, Trip, TripCreate
 from ..deps import current_persona, get_repository
 from ..repository import Forbidden, NotFound, Repository
 
@@ -49,6 +49,18 @@ def get_trip(
         raise HTTPException(status_code=404, detail="Trip not found.")
     except Forbidden:
         # Don't leak existence to a persona who can't see it.
+        raise HTTPException(status_code=404, detail="Trip not found.")
+
+
+@router.get("/{trip_id}/receipts", response_model=list[Receipt])
+def list_trip_receipts(
+    trip_id: str,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+) -> list[Receipt]:
+    try:
+        return repo.list_trip_receipts(trip_id, persona.id)
+    except (NotFound, Forbidden):
         raise HTTPException(status_code=404, detail="Trip not found.")
 
 

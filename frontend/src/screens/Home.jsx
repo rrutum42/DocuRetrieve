@@ -7,6 +7,7 @@ import { api } from '../api'
 import Header from '../components/Header.jsx'
 import Avatar from '../components/Avatar.jsx'
 import CreateTripModal from '../components/CreateTripModal.jsx'
+import TripCover from '../components/TripCover.jsx'
 
 function dateRange(t) {
   if (!t.start_date && !t.end_date) return null
@@ -71,7 +72,9 @@ export default function Home() {
 
           {trips.map((t) => (
             <Link key={t.id} to={'/trip/' + t.id} className="card">
-              <div className="card-cover" />
+              <div className="card-cover illustrated">
+                <TripCover trip={t} />
+              </div>
               <div className="card-body">
                 <div className="card-title">{t.name}</div>
                 <div className="card-meta">

@@ -89,11 +89,14 @@ frontend/         React app (added Day 2)
   retry + safe fallback, offline tests.
 - **Day 2 ✓** — persona picker, trips home (grid + personal "Everyday"),
   create-trip + share-with-people, and the **server-side visibility rule**
-  (a persona sees only trips they created or were shared into). React frontend
-  scaffolded; 23 backend tests passing.
+  (a persona sees only trips they created or were shared into).
+- **Day 3 ✓** — receipt **upload → always-confirm review → save** into a trip or
+  the personal ledger, with the original image stored in a **private** Supabase
+  bucket (served via short-lived signed URLs). Ledger view with per-currency
+  totals, category filter, and sort. 30 backend tests passing.
 
-Next: receipt upload + always-confirm review, ledger, per-person totals, and the
-ask box (see `PLAN.md` §10, Day 3+).
+Next: per-person "who paid" totals and the natural-language ask box
+(see `PLAN.md` §10, Day 4).
 
 ## License
 

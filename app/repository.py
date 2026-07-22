@@ -17,7 +17,8 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Protocol
 
-from .api_models import Persona, Trip
+from .api_models import Persona, Receipt, ReceiptCreate, ReceiptLineItem, Trip
+from .storage import signed_url, signed_urls
 
 
 class NotFound(Exception):
@@ -55,6 +56,15 @@ class Repository(Protocol):
         self, trip_id: str, persona_id: str, member_ids: list[str]
     ) -> Trip: ...
 
+    # receipts
+    def create_receipt(
+        self, *, owner_persona_id: str, data: ReceiptCreate, image_path: str | None
+    ) -> Receipt: ...
+    def list_trip_receipts(self, trip_id: str, persona_id: str) -> list[Receipt]: ...
+    def list_personal_receipts(self, persona_id: str) -> list[Receipt]: ...
+    def get_receipt(self, receipt_id: str, persona_id: str) -> Receipt: ...
+    def delete_receipt(self, receipt_id: str, persona_id: str) -> None: ...
+
 
 # --------------------------------------------------------------------------- #
 # In-memory implementation (tests / offline dev)
@@ -64,6 +74,7 @@ class InMemoryRepository:
     def __init__(self) -> None:
         self._personas: dict[str, Persona] = {}
         self._trips: dict[str, Trip] = {}
+        self._receipts: dict[str, Receipt] = {}
 
     # personas
     def list_personas(self) -> list[Persona]:
@@ -128,6 +139,68 @@ class InMemoryRepository:
         self._trips[trip_id] = updated
         return updated
 
+    # receipts
+    def create_receipt(
+        self, *, owner_persona_id: str, data: ReceiptCreate, image_path: str | None
+    ) -> Receipt:
+        if data.trip_id is not None:
+            self.get_trip_for_persona(data.trip_id, owner_persona_id)  # visibility
+        rid = str(uuid.uuid4())
+        receipt = Receipt(
+            id=rid,
+            trip_id=data.trip_id,
+            owner_persona_id=owner_persona_id,
+            paid_by_persona_id=data.paid_by_persona_id or owner_persona_id,
+            merchant=data.merchant,
+            purchase_date=data.purchase_date,
+            currency=data.currency,
+            subtotal=data.subtotal,
+            tax=data.tax,
+            tip=data.tip,
+            total=data.total,
+            category=data.category,
+            payment_method=data.payment_method,
+            line_items=list(data.line_items),
+            low_confidence_fields=list(data.low_confidence_fields),
+            image_path=image_path,
+            image_url=image_path,  # in-memory has no signing
+            status="confirmed",
+            created_at=_now(),
+        )
+        self._receipts[rid] = receipt
+        return receipt
+
+    def _receipt_visible(self, r: Receipt, persona_id: str) -> bool:
+        if r.trip_id is None:
+            return r.owner_persona_id == persona_id
+        trip = self._trips.get(r.trip_id)
+        return bool(trip and self._visible(trip, persona_id))
+
+    def list_trip_receipts(self, trip_id: str, persona_id: str) -> list[Receipt]:
+        self.get_trip_for_persona(trip_id, persona_id)  # enforces visibility
+        return [
+            r for r in self._receipts.values() if r.trip_id == trip_id
+        ]
+
+    def list_personal_receipts(self, persona_id: str) -> list[Receipt]:
+        return [
+            r
+            for r in self._receipts.values()
+            if r.trip_id is None and r.owner_persona_id == persona_id
+        ]
+
+    def get_receipt(self, receipt_id: str, persona_id: str) -> Receipt:
+        r = self._receipts.get(receipt_id)
+        if r is None:
+            raise NotFound(receipt_id)
+        if not self._receipt_visible(r, persona_id):
+            raise Forbidden(receipt_id)
+        return r
+
+    def delete_receipt(self, receipt_id: str, persona_id: str) -> None:
+        self.get_receipt(receipt_id, persona_id)  # enforces visibility
+        self._receipts.pop(receipt_id, None)
+
 
 # --------------------------------------------------------------------------- #
 # Supabase implementation (live)
@@ -142,6 +215,155 @@ class SupabaseRepository:
 
     def __init__(self, client) -> None:
         self._db = client
+
+    # receipts ---------------------------------------------------------------
+
+    def _row_to_receipt(self, row: dict, line_rows: list[dict], image_url) -> Receipt:
+        conf = row.get("confidence")
+        lcf = conf.get("low_confidence_fields", []) if isinstance(conf, dict) else []
+        return Receipt(
+            id=row["id"],
+            trip_id=row.get("trip_id"),
+            owner_persona_id=row["owner_persona_id"],
+            paid_by_persona_id=row["paid_by_persona_id"],
+            merchant=row.get("merchant"),
+            purchase_date=row.get("purchase_date"),
+            currency=row.get("currency"),
+            subtotal=row.get("subtotal"),
+            tax=row.get("tax"),
+            tip=row.get("tip"),
+            total=row.get("total"),
+            category=row.get("category"),
+            payment_method=row.get("payment_method"),
+            line_items=[
+                ReceiptLineItem(
+                    description=li.get("description") or "",
+                    qty=li.get("qty"),
+                    unit_price=li.get("unit_price"),
+                    amount=li.get("amount"),
+                )
+                for li in line_rows
+            ],
+            low_confidence_fields=lcf,
+            image_path=row.get("image_path"),
+            image_url=image_url,
+            status=row.get("status", "confirmed"),
+            created_at=row.get("created_at"),
+        )
+
+    def _assemble(self, rows: list[dict]) -> list[Receipt]:
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        li_rows = (
+            self._db.table("line_items").select("*").in_("receipt_id", ids).execute().data
+        )
+        by_receipt: dict[str, list[dict]] = {}
+        for li in li_rows:
+            by_receipt.setdefault(li["receipt_id"], []).append(li)
+        paths = [r["image_path"] for r in rows if r.get("image_path")]
+        urls = signed_urls(self._db, paths)
+        return [
+            self._row_to_receipt(
+                r, by_receipt.get(r["id"], []), urls.get(r.get("image_path"))
+            )
+            for r in rows
+        ]
+
+    def create_receipt(
+        self, *, owner_persona_id: str, data: ReceiptCreate, image_path: str | None
+    ) -> Receipt:
+        if data.trip_id is not None:
+            self.get_trip_for_persona(data.trip_id, owner_persona_id)  # visibility
+        paid_by = data.paid_by_persona_id or owner_persona_id
+        row = (
+            self._db.table("receipts")
+            .insert(
+                {
+                    "trip_id": data.trip_id,
+                    "owner_persona_id": owner_persona_id,
+                    "paid_by_persona_id": paid_by,
+                    "merchant": data.merchant,
+                    "purchase_date": data.purchase_date.isoformat()
+                    if data.purchase_date
+                    else None,
+                    "currency": data.currency,
+                    "subtotal": data.subtotal,
+                    "tax": data.tax,
+                    "tip": data.tip,
+                    "total": data.total,
+                    "category": data.category.value if data.category else None,
+                    "payment_method": data.payment_method,
+                    "image_path": image_path,
+                    "raw_extraction": data.raw_extraction,
+                    "confidence": {"low_confidence_fields": data.low_confidence_fields},
+                    "status": "confirmed",
+                }
+            )
+            .execute()
+            .data[0]
+        )
+        line_rows: list[dict] = []
+        if data.line_items:
+            line_rows = (
+                self._db.table("line_items")
+                .insert(
+                    [
+                        {
+                            "receipt_id": row["id"],
+                            "description": li.description,
+                            "qty": li.qty,
+                            "unit_price": li.unit_price,
+                            "amount": li.amount,
+                        }
+                        for li in data.line_items
+                    ]
+                )
+                .execute()
+                .data
+            )
+        url = signed_url(self._db, image_path) if image_path else None
+        return self._row_to_receipt(row, line_rows, url)
+
+    def list_trip_receipts(self, trip_id: str, persona_id: str) -> list[Receipt]:
+        self.get_trip_for_persona(trip_id, persona_id)  # visibility
+        rows = (
+            self._db.table("receipts")
+            .select("*")
+            .eq("trip_id", trip_id)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+        return self._assemble(rows)
+
+    def list_personal_receipts(self, persona_id: str) -> list[Receipt]:
+        rows = (
+            self._db.table("receipts")
+            .select("*")
+            .is_("trip_id", "null")
+            .eq("owner_persona_id", persona_id)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+        return self._assemble(rows)
+
+    def get_receipt(self, receipt_id: str, persona_id: str) -> Receipt:
+        rows = self._db.table("receipts").select("*").eq("id", receipt_id).execute().data
+        if not rows:
+            raise NotFound(receipt_id)
+        row = rows[0]
+        if row.get("trip_id"):
+            self.get_trip_for_persona(row["trip_id"], persona_id)  # raises if not visible
+        elif row["owner_persona_id"] != persona_id:
+            raise Forbidden(receipt_id)
+        return self._assemble([row])[0]
+
+    def delete_receipt(self, receipt_id: str, persona_id: str) -> None:
+        self.get_receipt(receipt_id, persona_id)  # visibility
+        # line_items cascade via FK; the stored image is left as an orphan (v1).
+        self._db.table("receipts").delete().eq("id", receipt_id).execute()
 
     # personas
     def list_personas(self) -> list[Persona]:
