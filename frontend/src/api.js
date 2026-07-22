@@ -1,0 +1,49 @@
+// Thin API client. Persists the selected persona id and sends it as the
+// X-Persona-Id header on every request — the server's visibility key.
+
+const PERSONA_KEY = 'docuretrieve.personaId'
+
+export function getPersonaId() {
+  return localStorage.getItem(PERSONA_KEY)
+}
+
+export function setPersonaId(id) {
+  if (id) localStorage.setItem(PERSONA_KEY, id)
+  else localStorage.removeItem(PERSONA_KEY)
+}
+
+async function req(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  const pid = getPersonaId()
+  if (pid) headers['X-Persona-Id'] = pid
+
+  const res = await fetch('/api' + path, { ...opts, headers })
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      detail = (await res.json()).detail || detail
+    } catch {
+      /* non-JSON error body */
+    }
+    const err = new Error(detail)
+    err.status = res.status
+    throw err
+  }
+  return res.status === 204 ? null : res.json()
+}
+
+export const api = {
+  config: () => req('/config'),
+  listPersonas: () => req('/personas'),
+  createPersona: (name, color) =>
+    req('/personas', { method: 'POST', body: JSON.stringify({ name, color }) }),
+  listTrips: () => req('/trips'),
+  createTrip: (trip) =>
+    req('/trips', { method: 'POST', body: JSON.stringify(trip) }),
+  getTrip: (id) => req('/trips/' + id),
+  addMembers: (id, memberIds) =>
+    req('/trips/' + id + '/members', {
+      method: 'POST',
+      body: JSON.stringify({ member_ids: memberIds }),
+    }),
+}

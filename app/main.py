@@ -13,13 +13,28 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .extraction import extract_receipt
+from .routers import personas, trips
 from .schemas import ExtractionResult
 
 app = FastAPI(title="DocuRetrieve", version="0.1.0")
+
+# In dev the React app runs on Vite (port 5173) and calls this API on 8000.
+# In production the same process serves the built frontend, so CORS is moot.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(personas.router)
+app.include_router(trips.router)
 
 ACCEPTED_MIME_PREFIXES = ("image/",)
 ACCEPTED_MIME_EXACT = ("application/pdf",)
@@ -73,8 +88,24 @@ async def extract(file: UploadFile = File(...)) -> ExtractionResult:
 
 # --------------------------------------------------------------------------- #
 # Serve the built frontend (if present) so this is a single deploy.
-# Mounted last so it never shadows /api routes.
+#
+# Registered last so /api/* and the docs always win. Hashed assets are served
+# from /assets; every other non-API path falls back to index.html so client-side
+# routes (e.g. /trip/:id) survive a direct load or refresh (SPA fallback).
 # --------------------------------------------------------------------------- #
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _frontend_dist.is_dir():
-    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
+    app.mount(
+        "/assets",
+        StaticFiles(directory=_frontend_dist / "assets"),
+        name="assets",
+    )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> FileResponse:
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found.")
+        candidate = _frontend_dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)  # favicon, etc.
+        return FileResponse(_frontend_dist / "index.html")
