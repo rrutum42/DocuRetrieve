@@ -25,22 +25,37 @@ paid" breakdown and a natural-language ask box.
 Requires Python 3.14 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. Install dependencies (into .venv)
+# 1. Install backend dependencies (into .venv)
 uv pip install -e ".[dev]"
 
 # 2. Configure (optional for a first look — see stub note below)
 cp .env.example .env
-#   fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY
+#   fill in GEMINI_API_KEY, and SUPABASE_URL + SUPABASE_KEY
+#   IMPORTANT: SUPABASE_URL is the project API URL — https://<ref>.supabase.co —
+#   NOT the dashboard URL (https://supabase.com/dashboard/project/<ref>).
 
-# 3. Run the API
+# 3. Build the frontend (FastAPI serves it in one process)
+cd frontend && npm install && npm run build && cd ..
+
+# 4. Run the app (serves API + the built UI)
 uv run uvicorn app.main:app --reload
 
-# 4. Run the tests
+# 5. Run the backend tests
 uv run pytest
 ```
 
-Open http://127.0.0.1:8000/api/health to confirm it's up, and
-http://127.0.0.1:8000/api/config to see what's wired.
+Open **http://127.0.0.1:8000** for the app. `/api/health` and `/api/config`
+show status; `/docs` is the interactive API playground.
+
+### Frontend dev with hot reload
+
+For UI work, run the Vite dev server alongside the API (it proxies `/api` to
+port 8000, so no CORS fuss):
+
+```bash
+uv run uvicorn app.main:app --reload      # terminal 1 — API on :8000
+cd frontend && npm run dev                 # terminal 2 — UI on :5173
+```
 
 ### No API key yet? Use the stub
 
@@ -70,5 +85,20 @@ frontend/         React app (added Day 2)
 
 ## Status
 
-Day 1 complete: extraction spine + schema + tests. Persona/trip endpoints,
-review UI, ledger, per-person totals, and the ask box follow (see `PLAN.md` §10).
+- **Day 1 ✓** — extraction spine (image → structured JSON), schema, bounded
+  retry + safe fallback, offline tests.
+- **Day 2 ✓** — persona picker, trips home (grid + personal "Everyday"),
+  create-trip + share-with-people, and the **server-side visibility rule**
+  (a persona sees only trips they created or were shared into). React frontend
+  scaffolded; 23 backend tests passing.
+
+Next: receipt upload + always-confirm review, ledger, per-person totals, and the
+ask box (see `PLAN.md` §10, Day 3+).
+
+## License
+
+Source-available under the **[PolyForm Noncommercial License 1.0.0](./LICENSE.md)**.
+You may use, modify, and share this project for any **noncommercial** purpose
+(personal, research, education, nonprofit). Using it for commercial advantage,
+revenue generation, or enterprise/business purposes is **not** permitted.
+© 2026 Rrutum Lavana.
