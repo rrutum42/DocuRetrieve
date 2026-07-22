@@ -68,6 +68,14 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
 - **Reasoning:** Per-container matches the trip-first UI and keeps the query's visibility scope trivially correct (one container id). Global ask needs cross-trip visibility joins in the query layer — worth doing, but as a stretch once the per-container path is solid and tested.
 - **Cut:** Global cross-trip ask for v1 (documented stretch).
 
+## Model pin: `gemini-flash-latest` alias, not a version-numbered flash
+
+- **Chose:** `gemini-flash-latest` as the default extraction model.
+- **Considered:** Pinning a specific version (`gemini-2.5-flash`, `gemini-3.6-flash`).
+- **Reasoning:** On first live test, `gemini-2.5-flash` returned 404 "no longer available to new users" — Google retires numbered flash models on a rolling basis. For a $0 project meant to keep working unattended, the stable `-latest` alias avoids silent breakage when a version is sunset. The graceful-fallback path caught the 404 cleanly (upload wasn't dropped), which validated that error handling — but a working default matters more.
+- **Tradeoff accepted:** `-latest` can shift extraction behavior when Google rolls the alias forward. Acceptable here; if outputs ever drift, pin the then-current version. `GEMINI_MODEL` is env-overridable for exactly this.
+- **Cut:** Version pinning for v1.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->
