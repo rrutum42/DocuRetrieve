@@ -34,6 +34,10 @@ class TripCreate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     cover_image: str | None = None
+    base_currency: str = Field(
+        default="INR",
+        description="ISO 4217 currency all of this trip's totals roll up into.",
+    )
     member_ids: list[str] = Field(
         default_factory=list,
         description="Persona ids to share the trip with. The creator is always a member.",
@@ -46,6 +50,7 @@ class Trip(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     cover_image: str | None = None
+    base_currency: str = "INR"
     created_by: str
     member_ids: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
@@ -107,3 +112,10 @@ class Receipt(BaseModel):
     image_url: str | None = None  # signed, generated at read time
     status: str = "confirmed"
     created_at: datetime | None = None
+
+    # Currency conversion snapshot (computed at save time). base_amount is None
+    # when the receipt couldn't be converted (unsupported currency / FX down).
+    base_currency: str | None = None
+    base_amount: float | None = None
+    fx_rate: float | None = None
+    fx_date: date | None = None

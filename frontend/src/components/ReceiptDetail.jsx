@@ -70,6 +70,25 @@ export default function ReceiptDetail({ receipt: r, personas, onClose, onDelete 
               <Row label="Tax" value={money(r.tax, r.currency)} field="tax" />
               {r.tip != null && <Row label="Tip" value={money(r.tip, r.currency)} field="tip" />}
               <Row label="Currency" value={r.currency || '—'} field="currency" />
+              {r.base_currency && r.base_currency !== r.currency && (
+                <Row
+                  label={`In ${r.base_currency}`}
+                  value={
+                    r.base_amount != null ? (
+                      <span title={
+                        r.fx_rate
+                          ? `1 ${r.currency} = ${r.fx_rate} ${r.base_currency}` +
+                            (r.fx_date ? ` on ${fmtDate(r.fx_date)}` : '')
+                          : undefined
+                      }>
+                        {money(r.base_amount, r.base_currency)}
+                      </span>
+                    ) : (
+                      <span className="muted">not converted</span>
+                    )
+                  }
+                />
+              )}
               {r.payment_method && <Row label="Payment" value={r.payment_method} />}
               <Row
                 label="Paid by"

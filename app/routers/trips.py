@@ -33,6 +33,7 @@ def create_trip(
         start_date=body.start_date,
         end_date=body.end_date,
         cover_image=body.cover_image,
+        base_currency=(body.base_currency or "INR").upper(),
         member_ids=body.member_ids,
     )
 
@@ -50,6 +51,24 @@ def get_trip(
     except Forbidden:
         # Don't leak existence to a persona who can't see it.
         raise HTTPException(status_code=404, detail="Trip not found.")
+
+
+@router.delete("/{trip_id}", status_code=204)
+def delete_trip(
+    trip_id: str,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+) -> None:
+    """Delete a trip and all its receipts. Only the creator may do this."""
+    try:
+        trip = repo.get_trip_for_persona(trip_id, persona.id)
+    except (NotFound, Forbidden):
+        raise HTTPException(status_code=404, detail="Trip not found.")
+    if trip.created_by != persona.id:
+        raise HTTPException(
+            status_code=403, detail="Only the trip's creator can delete it."
+        )
+    repo.delete_trip(trip_id, persona.id)
 
 
 @router.get("/{trip_id}/receipts", response_model=list[Receipt])

@@ -49,16 +49,26 @@ class Repository(Protocol):
         start_date: date | None,
         end_date: date | None,
         cover_image: str | None,
+        base_currency: str = "INR",
         member_ids: list[str],
     ) -> Trip: ...
     def get_trip_for_persona(self, trip_id: str, persona_id: str) -> Trip: ...
     def add_trip_members(
         self, trip_id: str, persona_id: str, member_ids: list[str]
     ) -> Trip: ...
+    def delete_trip(self, trip_id: str, persona_id: str) -> None: ...
 
     # receipts
     def create_receipt(
-        self, *, owner_persona_id: str, data: ReceiptCreate, image_path: str | None
+        self,
+        *,
+        owner_persona_id: str,
+        data: ReceiptCreate,
+        image_path: str | None,
+        base_currency: str | None = None,
+        base_amount: float | None = None,
+        fx_rate: float | None = None,
+        fx_date: date | None = None,
     ) -> Receipt: ...
     def list_trip_receipts(self, trip_id: str, persona_id: str) -> list[Receipt]: ...
     def list_personal_receipts(self, persona_id: str) -> list[Receipt]: ...
@@ -104,6 +114,7 @@ class InMemoryRepository:
         start_date: date | None,
         end_date: date | None,
         cover_image: str | None,
+        base_currency: str = "INR",
         member_ids: list[str],
     ) -> Trip:
         tid = str(uuid.uuid4())
@@ -115,6 +126,7 @@ class InMemoryRepository:
             start_date=start_date,
             end_date=end_date,
             cover_image=cover_image,
+            base_currency=base_currency,
             created_by=created_by,
             member_ids=members,
             created_at=_now(),
@@ -139,9 +151,29 @@ class InMemoryRepository:
         self._trips[trip_id] = updated
         return updated
 
+    def delete_trip(self, trip_id: str, persona_id: str) -> None:
+        trip = self._trips.get(trip_id)
+        if trip is None:
+            raise NotFound(trip_id)
+        if trip.created_by != persona_id:
+            raise Forbidden(trip_id)  # only the creator may delete
+        # Remove the trip and all its receipts (cascade equivalent).
+        self._receipts = {
+            rid: r for rid, r in self._receipts.items() if r.trip_id != trip_id
+        }
+        self._trips.pop(trip_id, None)
+
     # receipts
     def create_receipt(
-        self, *, owner_persona_id: str, data: ReceiptCreate, image_path: str | None
+        self,
+        *,
+        owner_persona_id: str,
+        data: ReceiptCreate,
+        image_path: str | None,
+        base_currency: str | None = None,
+        base_amount: float | None = None,
+        fx_rate: float | None = None,
+        fx_date: date | None = None,
     ) -> Receipt:
         if data.trip_id is not None:
             self.get_trip_for_persona(data.trip_id, owner_persona_id)  # visibility
@@ -166,6 +198,10 @@ class InMemoryRepository:
             image_url=image_path,  # in-memory has no signing
             status="confirmed",
             created_at=_now(),
+            base_currency=base_currency,
+            base_amount=base_amount,
+            fx_rate=fx_rate,
+            fx_date=fx_date,
         )
         self._receipts[rid] = receipt
         return receipt
@@ -249,6 +285,10 @@ class SupabaseRepository:
             image_url=image_url,
             status=row.get("status", "confirmed"),
             created_at=row.get("created_at"),
+            base_currency=row.get("base_currency"),
+            base_amount=row.get("base_amount"),
+            fx_rate=row.get("fx_rate"),
+            fx_date=row.get("fx_date"),
         )
 
     def _assemble(self, rows: list[dict]) -> list[Receipt]:
@@ -271,7 +311,15 @@ class SupabaseRepository:
         ]
 
     def create_receipt(
-        self, *, owner_persona_id: str, data: ReceiptCreate, image_path: str | None
+        self,
+        *,
+        owner_persona_id: str,
+        data: ReceiptCreate,
+        image_path: str | None,
+        base_currency: str | None = None,
+        base_amount: float | None = None,
+        fx_rate: float | None = None,
+        fx_date: date | None = None,
     ) -> Receipt:
         if data.trip_id is not None:
             self.get_trip_for_persona(data.trip_id, owner_persona_id)  # visibility
@@ -298,6 +346,10 @@ class SupabaseRepository:
                     "raw_extraction": data.raw_extraction,
                     "confidence": {"low_confidence_fields": data.low_confidence_fields},
                     "status": "confirmed",
+                    "base_currency": base_currency,
+                    "base_amount": base_amount,
+                    "fx_rate": fx_rate,
+                    "fx_date": fx_date.isoformat() if fx_date else None,
                 }
             )
             .execute()
@@ -443,6 +495,7 @@ class SupabaseRepository:
         start_date: date | None,
         end_date: date | None,
         cover_image: str | None,
+        base_currency: str = "INR",
         member_ids: list[str],
     ) -> Trip:
         row = (
@@ -454,6 +507,7 @@ class SupabaseRepository:
                     "start_date": start_date.isoformat() if start_date else None,
                     "end_date": end_date.isoformat() if end_date else None,
                     "cover_image": cover_image,
+                    "base_currency": base_currency,
                 }
             )
             .execute()
@@ -486,3 +540,14 @@ class SupabaseRepository:
         return trip.model_copy(
             update={"member_ids": [*trip.member_ids, *new_ids]}
         )
+
+    def delete_trip(self, trip_id: str, persona_id: str) -> None:
+        rows = (
+            self._db.table("trips").select("created_by").eq("id", trip_id).execute().data
+        )
+        if not rows:
+            raise NotFound(trip_id)
+        if rows[0]["created_by"] != persona_id:
+            raise Forbidden(trip_id)  # only the creator may delete
+        # FK cascades remove receipts, line_items, and trip_members.
+        self._db.table("trips").delete().eq("id", trip_id).execute()

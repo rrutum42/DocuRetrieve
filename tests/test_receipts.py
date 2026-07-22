@@ -11,10 +11,26 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.deps import get_repository, get_storage
+from app.deps import get_fx, get_repository, get_storage
+from app.fx import Conversion
 from app.main import app
 from app.repository import InMemoryRepository
 from app.storage import NoopStorage
+
+
+class FakeFx:
+    """Deterministic conversion for tests. rate=None simulates a conversion
+    failure (unsupported currency / FX service down)."""
+
+    def __init__(self, rate=80.0):
+        self.rate = rate
+
+    def convert(self, amount, from_currency, to_currency, on):
+        if (from_currency or "").upper() == (to_currency or "").upper():
+            return Conversion(round(amount, 2), 1.0, on)
+        if self.rate is None:
+            return None
+        return Conversion(round(amount * self.rate, 2), self.rate, on)
 
 
 @pytest.fixture
@@ -23,9 +39,15 @@ def repo():
 
 
 @pytest.fixture
-def client(repo):
+def fx():
+    return FakeFx()
+
+
+@pytest.fixture
+def client(repo, fx):
     app.dependency_overrides[get_repository] = lambda: repo
     app.dependency_overrides[get_storage] = lambda: NoopStorage()
+    app.dependency_overrides[get_fx] = lambda: fx
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -74,6 +96,51 @@ def test_save_and_list_receipt_in_trip(client):
 
     listed = client.get(f"/api/trips/{trip['id']}/receipts", headers=h).json()
     assert [x["id"] for x in listed] == [saved["id"]]
+
+
+def test_receipt_converts_to_trip_base_currency(client):
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    # Trip base currency INR (default); receipt in USD -> converts at FakeFx rate 80
+    trip = client.post("/api/trips", json={"name": "US road trip"}, headers=h).json()
+    assert trip["base_currency"] == "INR"
+
+    r = _save_receipt(
+        client,
+        mom["id"],
+        {"trip_id": trip["id"], "currency": "USD", "total": 10.0, "category": "fuel"},
+    ).json()
+    assert r["base_currency"] == "INR"
+    assert r["base_amount"] == 800.0
+    assert r["fx_rate"] == 80.0
+
+
+def test_same_currency_receipt_keeps_amount(client):
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip = client.post(
+        "/api/trips", json={"name": "Delhi", "base_currency": "INR"}, headers=h
+    ).json()
+    r = _save_receipt(
+        client, mom["id"], {"trip_id": trip["id"], "currency": "INR", "total": 250.0}
+    ).json()
+    assert r["base_amount"] == 250.0
+    assert r["fx_rate"] == 1.0
+
+
+def test_conversion_failure_saves_native_only(client, fx):
+    fx.rate = None  # simulate FX service down / unsupported currency
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip = client.post("/api/trips", json={"name": "Trip"}, headers=h).json()
+    r = _save_receipt(
+        client, mom["id"], {"trip_id": trip["id"], "currency": "USD", "total": 10.0}
+    ).json()
+    # Native amount preserved; conversion fields empty; receipt still saved.
+    assert r["total"] == 10.0
+    assert r["base_currency"] == "INR"
+    assert r["base_amount"] is None
+    assert r["fx_rate"] is None
 
 
 def test_invalid_category_is_rejected(client):

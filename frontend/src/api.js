@@ -46,6 +46,7 @@ export const api = {
   createTrip: (trip) =>
     req('/trips', { method: 'POST', body: JSON.stringify(trip) }),
   getTrip: (id) => req('/trips/' + id),
+  deleteTrip: (id) => req('/trips/' + id, { method: 'DELETE' }),
   addMembers: (id, memberIds) =>
     req('/trips/' + id + '/members', {
       method: 'POST',
@@ -77,4 +78,23 @@ export const CATEGORIES = [
   'transport',
   'shopping',
   'other',
+]
+
+// Currencies Frankfurter (ECB) can convert into — safe choices for a trip's
+// base currency. Ordered with common travel currencies first.
+export const CURRENCIES = [
+  ['INR', '₹ Indian Rupee'],
+  ['USD', '$ US Dollar'],
+  ['EUR', '€ Euro'],
+  ['GBP', '£ British Pound'],
+  ['JPY', '¥ Japanese Yen'],
+  ['AUD', 'A$ Australian Dollar'],
+  ['CAD', 'C$ Canadian Dollar'],
+  ['CHF', 'Swiss Franc'],
+  ['CNY', '¥ Chinese Yuan'],
+  ['SGD', 'S$ Singapore Dollar'],
+  ['HKD', 'HK$ Hong Kong Dollar'],
+  ['THB', '฿ Thai Baht'],
+  ['NZD', 'NZ$ New Zealand Dollar'],
+  ['ZAR', 'South African Rand'],
 ]

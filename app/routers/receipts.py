@@ -13,7 +13,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
 from ..api_models import Persona, Receipt, ReceiptCreate
-from ..deps import current_persona, get_repository, get_storage
+from ..config import get_settings
+from ..deps import current_persona, get_fx, get_repository, get_storage
+from ..fx import FxService
 from ..repository import Forbidden, NotFound, Repository
 from ..storage import Storage
 
@@ -41,8 +43,15 @@ async def create_receipt(
     persona: Persona = Depends(current_persona),
     repo: Repository = Depends(get_repository),
     storage: Storage = Depends(get_storage),
+    fx: FxService = Depends(get_fx),
 ) -> Receipt:
-    """Persist a confirmed receipt and its original image."""
+    """Persist a confirmed receipt and its original image.
+
+    Converts the total into the container's base currency at the receipt's date
+    (snapshot). Trip receipts use the trip's base currency; personal receipts use
+    the app default. Conversion failures are non-fatal — the receipt saves with
+    its native amount only.
+    """
     try:
         data = ReceiptCreate.model_validate_json(payload)
     except ValidationError as exc:
@@ -53,22 +62,38 @@ async def create_receipt(
     if len(image_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
 
-    # paid_by must be someone actually on the trip.
-    if data.trip_id and data.paid_by_persona_id:
+    # Determine the base currency for this container.
+    if data.trip_id:
         try:
             trip = repo.get_trip_for_persona(data.trip_id, persona.id)
         except (NotFound, Forbidden):
             raise HTTPException(status_code=404, detail="Trip not found.")
-        if data.paid_by_persona_id not in trip.member_ids:
+        if data.paid_by_persona_id and data.paid_by_persona_id not in trip.member_ids:
             raise HTTPException(
                 status_code=400, detail="paid_by must be a member of the trip."
             )
+        base_currency = trip.base_currency
+    else:
+        base_currency = get_settings().default_base_currency
+
+    # Snapshot-convert the total (best-effort; None on any failure).
+    base_amount = fx_rate = fx_date = None
+    if data.total is not None and data.currency:
+        conv = fx.convert(data.total, data.currency, base_currency, data.purchase_date)
+        if conv is not None:
+            base_amount, fx_rate, fx_date = conv.base_amount, conv.fx_rate, conv.fx_date
 
     image_path = storage.upload_image(image_bytes, mime) if image_bytes else None
 
     try:
         return repo.create_receipt(
-            owner_persona_id=persona.id, data=data, image_path=image_path
+            owner_persona_id=persona.id,
+            data=data,
+            image_path=image_path,
+            base_currency=base_currency,
+            base_amount=base_amount,
+            fx_rate=fx_rate,
+            fx_date=fx_date,
         )
     except (NotFound, Forbidden):
         raise HTTPException(status_code=404, detail="Trip not found.")

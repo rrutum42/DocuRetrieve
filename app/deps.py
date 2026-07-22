@@ -14,6 +14,7 @@ from fastapi import Depends, Header, HTTPException
 
 from .api_models import Persona
 from .config import get_settings
+from .fx import FrankfurterFx, FxService
 from .repository import InMemoryRepository, Repository, SupabaseRepository
 from .storage import NoopStorage, Storage, SupabaseStorage
 
@@ -40,6 +41,12 @@ def get_storage() -> Storage:
 
         return SupabaseStorage(get_supabase())
     return NoopStorage()
+
+
+@lru_cache
+def get_fx() -> FxService:
+    """Live currency conversion (Frankfurter). Overridden in tests."""
+    return FrankfurterFx()
 
 
 def current_persona(

@@ -76,6 +76,18 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
 - **Tradeoff accepted:** `-latest` can shift extraction behavior when Google rolls the alias forward. Acceptable here; if outputs ever drift, pin the then-current version. `GEMINI_MODEL` is env-overridable for exactly this.
 - **Cut:** Version pinning for v1.
 
+## Multi-currency: store native + snapshot-convert at save time, per-trip base currency
+
+- **Chose:** Each receipt keeps its **native** currency/total as the source of truth, plus a **conversion snapshot** (`base_amount`, `fx_rate`, `fx_date`) taken **once at save time** using the historical rate for the receipt's own date. Each trip has a single `base_currency` (chosen at creation, default INR); the personal ledger uses the app default. FX source is **Frankfurter** (ECB daily rates — free, no API key).
+- **Considered:** (a) Overwriting the amount with the converted value (the user's first phrasing); (b) converting live on every ledger load; (c) per-persona home currency so each viewer sees their own; (d) a paid FX API.
+- **Reasoning:**
+  - *Never lose the printed amount* — overwriting kills auditability and breaks if the base currency changes later or a rate was wrong. Native stays immutable.
+  - *Snapshot beats live* — the number is reproducible (won't silently shift), fast (no per-row API calls), and resilient (a later FX outage doesn't break display). "Converted at the purchase-date rate" is an explainable figure.
+  - *Per-trip base currency* is the simplest model that answers "what did this trip cost us at home?" Per-persona currency was deferred — it needs multiple snapshots or live conversion for marginal benefit in a family tool.
+  - *Frankfurter* fits the $0 constraint and covers the ~30 major currencies a traveling family uses (incl. INR); verified live for historical dates.
+- **Real-world handling (non-fatal):** same currency → rate 1, no call; unsupported currency / FX down / missing date → save the **native amount only**, mark **"not converted"**, surface it in the ledger, allow later backfill. A conversion failure never blocks a save.
+- **Cut:** live conversion, per-persona currency, and converting subtotal/tax/tip (only the total — the roll-up figure — is converted in v1).
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

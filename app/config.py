@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Lets the app and tests run with no API key.
     docuretrieve_use_stub: bool = False
 
+    # Home currency for the personal ("Everyday") ledger and the default for new
+    # trips. Trips can override their own base currency at creation.
+    default_base_currency: str = "INR"
+
     @property
     def gemini_configured(self) -> bool:
         return bool(self.gemini_api_key)

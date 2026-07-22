@@ -18,13 +18,14 @@ create table if not exists personas (
 -- The primary container: a trip (album). Everyday spending lives OUTSIDE any
 -- trip, in the uploader's personal ledger (receipts.trip_id is null).
 create table if not exists trips (
-    id          uuid primary key default gen_random_uuid(),
-    name        text not null,
-    start_date  date,
-    end_date    date,
-    cover_image text,                        -- Storage key
-    created_by  uuid not null references personas(id) on delete cascade,
-    created_at  timestamptz not null default now()
+    id            uuid primary key default gen_random_uuid(),
+    name          text not null,
+    start_date    date,
+    end_date      date,
+    cover_image   text,                      -- Storage key
+    base_currency text not null default 'INR', -- ISO 4217; trip totals roll up into this
+    created_by    uuid not null references personas(id) on delete cascade,
+    created_at    timestamptz not null default now()
 );
 
 -- Who can see / participate in a trip (Splitwise-style membership).
@@ -52,6 +53,10 @@ create table if not exists receipts (
     raw_extraction     jsonb,                -- full model output (audit/debug)
     confidence         jsonb,                -- low-confidence field flags
     status             text not null default 'needs_review',  -- 'needs_review' | 'confirmed'
+    base_currency      text,                 -- target currency of the conversion snapshot
+    base_amount        numeric,              -- total converted into base_currency
+    fx_rate            numeric,              -- rate applied (native -> base)
+    fx_date            date,                 -- date whose rate was used
     created_at         timestamptz not null default now()
 );
 

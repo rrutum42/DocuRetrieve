@@ -66,6 +66,42 @@ def test_stranger_gets_404_on_someone_elses_trip(client):
     assert client.get("/api/trips", headers={"X-Persona-Id": kid["id"]}).json() == []
 
 
+def test_creator_can_delete_trip(client):
+    mom = _make_persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip = client.post("/api/trips", json={"name": "France"}, headers=h).json()
+    assert client.delete(f"/api/trips/{trip['id']}", headers=h).status_code == 204
+    assert client.get("/api/trips", headers=h).json() == []
+
+
+def test_non_creator_member_cannot_delete_trip(client):
+    mom = _make_persona(client, "Mom")
+    dad = _make_persona(client, "Dad")
+    trip = client.post(
+        "/api/trips",
+        json={"name": "France", "member_ids": [dad["id"]]},
+        headers={"X-Persona-Id": mom["id"]},
+    ).json()
+    # Dad is a member (can see it) but not the creator -> 403, trip survives.
+    r = client.delete(f"/api/trips/{trip['id']}", headers={"X-Persona-Id": dad["id"]})
+    assert r.status_code == 403
+    assert trip["id"] in [
+        t["id"]
+        for t in client.get("/api/trips", headers={"X-Persona-Id": dad["id"]}).json()
+    ]
+
+
+def test_stranger_deleting_trip_gets_404(client):
+    mom = _make_persona(client, "Mom")
+    kid = _make_persona(client, "Kid")
+    trip = client.post(
+        "/api/trips", json={"name": "France"}, headers={"X-Persona-Id": mom["id"]}
+    ).json()
+    # Kid can't see it -> 404 (existence not leaked as 403)
+    r = client.delete(f"/api/trips/{trip['id']}", headers={"X-Persona-Id": kid["id"]})
+    assert r.status_code == 404
+
+
 def test_add_members_shares_the_trip(client):
     mom = _make_persona(client, "Mom")
     dad = _make_persona(client, "Dad")

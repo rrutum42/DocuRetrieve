@@ -42,15 +42,19 @@ export default function Ledger({ receipts, personas, onDelete }) {
     return rows
   }, [receipts, category, sort])
 
-  // Totals per currency (a trip may mix currencies).
-  const totals = useMemo(() => {
+  // Roll totals up into each receipt's base currency (usually one per container).
+  // Receipts that couldn't be converted are counted separately, not hidden.
+  const { totals, notConverted } = useMemo(() => {
     const acc = {}
+    let nc = 0
     for (const r of view) {
-      if (r.total == null) continue
-      const c = r.currency || 'USD'
-      acc[c] = (acc[c] || 0) + r.total
+      if (r.base_amount != null && r.base_currency) {
+        acc[r.base_currency] = (acc[r.base_currency] || 0) + r.base_amount
+      } else if (r.total != null) {
+        nc += 1
+      }
     }
-    return acc
+    return { totals: acc, notConverted: nc }
   }, [view])
 
   if (receipts.length === 0) {
@@ -73,6 +77,11 @@ export default function Ledger({ receipts, personas, onDelete }) {
           ))}
           <span className="count">
             {view.length} receipt{view.length === 1 ? '' : 's'}
+            {notConverted > 0 && (
+              <span className="warn-count" title="Saved in original currency; not converted">
+                {' '}· {notConverted} not converted
+              </span>
+            )}
           </span>
         </div>
         <div className="filters">
@@ -118,7 +127,16 @@ export default function Ledger({ receipts, personas, onDelete }) {
               <div className="rr-payer" title={payer?.name}>
                 {payer && <Avatar persona={payer} size={26} />}
               </div>
-              <div className="rr-total">{money(r.total, r.currency)}</div>
+              <div className="rr-total">
+                {money(r.total, r.currency)}
+                {r.base_amount != null &&
+                  r.base_currency &&
+                  r.base_currency !== r.currency && (
+                    <span className="rr-converted">
+                      ≈ {money(r.base_amount, r.base_currency)}
+                    </span>
+                  )}
+              </div>
               <button
                 className="rr-del"
                 title="Delete receipt"

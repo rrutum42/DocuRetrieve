@@ -2,7 +2,7 @@
 // (Splitwise-style). The creator is always a member server-side.
 
 import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, CURRENCIES } from '../api'
 import { usePersona } from '../persona.jsx'
 import Avatar from './Avatar.jsx'
 
@@ -11,6 +11,7 @@ export default function CreateTripModal({ onClose, onCreated }) {
   const [name, setName] = useState('')
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
+  const [currency, setCurrency] = useState('INR')
   const [people, setPeople] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [saving, setSaving] = useState(false)
@@ -40,6 +41,7 @@ export default function CreateTripModal({ onClose, onCreated }) {
         name: name.trim(),
         start_date: start || null,
         end_date: end || null,
+        base_currency: currency,
         member_ids: [...selected],
       })
       onCreated(trip)
@@ -74,6 +76,21 @@ export default function CreateTripModal({ onClose, onCreated }) {
           <div className="field">
             <label>End date</label>
             <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label>Base currency</label>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map(([code, label]) => (
+              <option key={code} value={code}>
+                {label} ({code})
+              </option>
+            ))}
+          </select>
+          <div className="field-hint">
+            All this trip's totals roll up into this currency, converted at each
+            receipt's date.
           </div>
         </div>
 

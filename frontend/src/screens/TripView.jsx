@@ -3,7 +3,7 @@
 // the ledger. Per-person totals and the ask box come on Day 4.
 
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import Header from '../components/Header.jsx'
 import Avatar from '../components/Avatar.jsx'
@@ -14,6 +14,7 @@ import { usePersona } from '../persona.jsx'
 export default function TripView({ everyday = false }) {
   const { id } = useParams()
   const { persona } = usePersona()
+  const navigate = useNavigate()
   const fileInput = useRef(null)
 
   const [trip, setTrip] = useState(null)
@@ -82,6 +83,21 @@ export default function TripView({ everyday = false }) {
     setReceipts((rs) => rs.filter((x) => x.id !== r.id))
   }
 
+  async function deleteTrip() {
+    const n = receipts.length
+    const msg =
+      `Delete "${trip.name}"?` +
+      (n ? ` This also deletes ${n} receipt${n === 1 ? '' : 's'}.` : '') +
+      ' This cannot be undone.'
+    if (!confirm(msg)) return
+    try {
+      await api.deleteTrip(trip.id)
+      navigate('/')
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   if (loading) {
     return (
       <>
@@ -131,6 +147,11 @@ export default function TripView({ everyday = false }) {
                     ))}
                   </span>
                   <span>{members.map((m) => m.name).join(', ')}</span>
+                  {trip.base_currency && (
+                    <span className="base-cur-pill" title="Trip totals roll up into this currency">
+                      Totals in {trip.base_currency}
+                    </span>
+                  )}
                   <button className="btn ghost" onClick={() => setAdding(true)}>
                     + Add people
                   </button>
@@ -153,6 +174,11 @@ export default function TripView({ everyday = false }) {
             >
               {extracting ? 'Reading receipt…' : '＋ Add receipt'}
             </button>
+            {!everyday && trip.created_by === persona.id && (
+              <button className="btn danger-link" onClick={deleteTrip}>
+                Delete trip
+              </button>
+            )}
           </div>
         </div>
 
