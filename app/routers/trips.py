@@ -3,11 +3,25 @@ rule via the acting persona (from the X-Persona-Id header)."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..api_models import AddMembers, Persona, Receipt, Trip, TripCreate
-from ..deps import current_persona, get_repository
+from ..api_models import (
+    AddMembers,
+    AskRequest,
+    AskResponse,
+    LedgerSummary,
+    Persona,
+    Receipt,
+    Trip,
+    TripCreate,
+)
+from ..ask import AskContext, AskPlanner, planner_error_response, run_query
+from ..deps import current_persona, get_ask_planner, get_repository
 from ..repository import Forbidden, NotFound, Repository
+from ..schemas import Category
+from ..summary import compute_summary
 
 router = APIRouter(prefix="/api/trips", tags=["trips"])
 
@@ -51,6 +65,58 @@ def get_trip(
     except Forbidden:
         # Don't leak existence to a persona who can't see it.
         raise HTTPException(status_code=404, detail="Trip not found.")
+
+
+@router.get("/{trip_id}/summary", response_model=LedgerSummary)
+def trip_summary(
+    trip_id: str,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+) -> LedgerSummary:
+    """Grand total + per-person 'who paid' split, in the trip's base currency."""
+    try:
+        trip = repo.get_trip_for_persona(trip_id, persona.id)
+        receipts = repo.list_trip_receipts(trip_id, persona.id)
+    except (NotFound, Forbidden):
+        raise HTTPException(status_code=404, detail="Trip not found.")
+    return compute_summary(receipts, trip.base_currency, member_ids=trip.member_ids)
+
+
+@router.post("/{trip_id}/ask", response_model=AskResponse)
+def ask_trip(
+    trip_id: str,
+    body: AskRequest,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+    planner: AskPlanner = Depends(get_ask_planner),
+) -> AskResponse:
+    """Answer a natural-language question over this trip's receipts."""
+    try:
+        trip = repo.get_trip_for_persona(trip_id, persona.id)
+        receipts = repo.list_trip_receipts(trip_id, persona.id)
+    except (NotFound, Forbidden):
+        raise HTTPException(status_code=404, detail="Trip not found.")
+
+    personas = repo.list_personas()
+    members = [p for p in personas if p.id in trip.member_ids]
+    ctx = AskContext(
+        today=date.today(),
+        base_currency=trip.base_currency,
+        categories=[c.value for c in Category],
+        people=[p.name for p in members],
+    )
+    try:
+        spec = planner.plan(body.question, ctx)
+    except Exception as exc:
+        return planner_error_response(body.question, exc)
+    return run_query(
+        body.question,
+        spec,
+        receipts,
+        personas,
+        trip.base_currency,
+        member_ids=trip.member_ids,
+    )
 
 
 @router.delete("/{trip_id}", status_code=204)

@@ -9,6 +9,8 @@ import Header from '../components/Header.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Ledger from '../components/Ledger.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
+import AskBox from '../components/AskBox.jsx'
+import WhoPaid from '../components/WhoPaid.jsx'
 import { usePersona } from '../persona.jsx'
 
 export default function TripView({ everyday = false }) {
@@ -26,6 +28,7 @@ export default function TripView({ everyday = false }) {
 
   const [extracting, setExtracting] = useState(false)
   const [review, setReview] = useState(null) // { result, file }
+  const [askResult, setAskResult] = useState(null) // AskResponse | null
 
   async function load() {
     setLoading(true)
@@ -184,7 +187,37 @@ export default function TripView({ everyday = false }) {
 
         {error && <div className="banner error">{error}</div>}
 
-        <Ledger receipts={receipts} personas={personas} onDelete={deleteReceipt} />
+        {receipts.length > 0 && (
+          <AskBox
+            ask={everyday ? api.askPersonal : (q) => api.askTrip(trip.id, q)}
+            onResult={setAskResult}
+            examples={
+              everyday
+                ? ['How much in total?', 'What did I spend on groceries?', 'How many receipts?']
+                : [
+                    'How much in total?',
+                    'What did we spend on dining?',
+                    `How much is owed to ${persona.name}?`,
+                  ]
+            }
+          />
+        )}
+
+        {!everyday && (
+          <WhoPaid
+            receipts={receipts}
+            personas={personas}
+            members={members}
+            baseCurrency={trip.base_currency}
+          />
+        )}
+
+        <Ledger
+          receipts={receipts}
+          personas={personas}
+          onDelete={deleteReceipt}
+          filterIds={askResult ? new Set(askResult.matched.map((m) => m.id)) : null}
+        />
       </div>
 
       {review && (

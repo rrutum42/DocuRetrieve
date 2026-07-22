@@ -531,6 +531,155 @@ select:focus {
   margin: 0 0 24px;
 }
 
+/* --- ask box ------------------------------------------------------------ */
+
+.askbox {
+  margin-bottom: 18px;
+}
+.ask-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 6px 6px 16px;
+  box-shadow: var(--shadow);
+}
+.ask-form:focus-within {
+  border-color: var(--accent);
+}
+.ask-spark {
+  color: var(--accent);
+  font-size: 16px;
+}
+.ask-form input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font: inherit;
+  background: transparent;
+  padding: 6px 0;
+}
+.ask-form .btn {
+  border-radius: 999px;
+}
+.ask-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ask-chip {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+.ask-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ask-answer {
+  margin-top: 12px;
+  background: #fbf3ef;
+  border: 1px solid #ecd5c9;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.ask-answer-text {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.ask-answer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+/* --- who paid ----------------------------------------------------------- */
+
+.whopaid {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+.whopaid-total {
+  display: flex;
+  flex-direction: column;
+  padding-right: 20px;
+  border-right: 1px solid var(--line);
+}
+.wp-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+.wp-amount {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.wp-note {
+  font-size: 12px;
+  color: #a9701a;
+}
+.whopaid-people {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.wp-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.wp-chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.wp-name {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.wp-paid {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wp-share {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.wp-bal {
+  font-size: 12px;
+  font-weight: 600;
+}
+.wp-bal.owed {
+  color: #2f8a52;
+}
+.wp-bal.owes {
+  color: #b3402a;
+}
+.wp-bal.even {
+  color: var(--ink-soft);
+}
+
 /* --- ledger ------------------------------------------------------------- */
 
 .ledger-bar {

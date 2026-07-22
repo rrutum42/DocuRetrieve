@@ -95,8 +95,13 @@ frontend/         React app (added Day 2)
   bucket (served via short-lived signed URLs). Ledger view with per-currency
   totals, category filter, and sort. 30 backend tests passing.
 
-Next: per-person "who paid" totals and the natural-language ask box
-(see `PLAN.md` §10, Day 4).
+- **Day 4 ✓** — per-person "who paid" split + grand total per trip, and a
+  **natural-language ask box** (question → validated query spec → executed in
+  Python over the receipts, returning the exact receipts behind each answer).
+  55 backend tests passing.
+
+Multi-currency (per-trip base currency, snapshot conversion via Frankfurter) and
+delete-trip also landed along the way.
 
 ## License
 

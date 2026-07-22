@@ -88,6 +88,19 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
 - **Real-world handling (non-fatal):** same currency → rate 1, no call; unsupported currency / FX down / missing date → save the **native amount only**, mark **"not converted"**, surface it in the ledger, allow later backfill. A conversion failure never blocks a save.
 - **Cut:** live conversion, per-persona currency, and converting subtotal/tax/tip (only the total — the roll-up figure — is converted in v1).
 
+## Ask box: NL → validated query spec → Python execution (not NL → SQL)
+
+- **Chose:** The model compiles a question into a small **validated `QuerySpec`** (operation + filters), which we execute **in Python over the container's already-loaded receipts**. Answers return the exact matching receipts as evidence.
+- **Considered:** (a) the original plan's **NL → raw SQL**; (b) feeding all receipts to the model and letting it answer directly (LLM does the math).
+- **Reasoning:**
+  - *No SQL execution path* — Supabase's REST client can't run arbitrary SQL, and we have no direct DB connection (only the API key). NL→SQL would need infrastructure we deliberately don't run.
+  - *Injection-proof* — a structured spec validated by Pydantic has no injection surface; generated SQL does.
+  - *Exact arithmetic* — Python sums/averages are deterministic; letting the LLM do math invites hallucinated totals.
+  - *Traceable* — because we filter receipts ourselves, we return the precise set behind each answer, and the UI filters the ledger to them.
+  - The model call sits behind an `AskPlanner` seam, so the whole feature is unit-tested without Gemini; a no-LLM fallback lists everything.
+- **Real-world handling:** planner errors fall back to a "list" spec (never fail the question); unconverted receipts are excluded from sums with an explicit note; unknown payer/category yields an honest "no receipts found".
+- **Cut:** NL→SQL, LLM-does-the-math, and a "group by person" operation (the per-person "who paid" strip already answers that visually).
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

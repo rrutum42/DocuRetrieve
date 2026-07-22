@@ -13,6 +13,7 @@ from functools import lru_cache
 from fastapi import Depends, Header, HTTPException
 
 from .api_models import Persona
+from .ask import AskPlanner, GeminiPlanner, ListAllPlanner
 from .config import get_settings
 from .fx import FrankfurterFx, FxService
 from .repository import InMemoryRepository, Repository, SupabaseRepository
@@ -47,6 +48,16 @@ def get_storage() -> Storage:
 def get_fx() -> FxService:
     """Live currency conversion (Frankfurter). Overridden in tests."""
     return FrankfurterFx()
+
+
+@lru_cache
+def get_ask_planner() -> AskPlanner:
+    """Live NL->QuerySpec planner (Gemini), or a list-everything fallback when no
+    model is configured. Overridden in tests."""
+    settings = get_settings()
+    if settings.gemini_configured and not settings.docuretrieve_use_stub:
+        return GeminiPlanner()
+    return ListAllPlanner()
 
 
 def current_persona(

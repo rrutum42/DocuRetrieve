@@ -20,7 +20,10 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-flash-latest"
+    gemini_model: str = "gemini-flash-latest"  # receipt vision/extraction
+    # The ask box uses a separate, lighter model — its own free-tier quota
+    # bucket, so heavy Q&A doesn't starve receipt extraction (and vice-versa).
+    gemini_ask_model: str = "gemini-flash-lite-latest"
 
     # Supabase
     supabase_url: str = ""

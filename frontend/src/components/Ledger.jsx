@@ -5,42 +5,23 @@ import { useMemo, useState } from 'react'
 import { CATEGORIES } from '../api'
 import Avatar from './Avatar.jsx'
 import ReceiptDetail from './ReceiptDetail.jsx'
+import { money, fmtDate } from '../format'
 
-function money(amount, currency) {
-  if (amount == null) return '—'
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currency || 'USD',
-    }).format(amount)
-  } catch {
-    return `${amount} ${currency || ''}`.trim()
-  }
-}
-
-function fmtDate(d) {
-  if (!d) return ''
-  return new Date(d + 'T00:00:00').toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
-export default function Ledger({ receipts, personas, onDelete }) {
+export default function Ledger({ receipts, personas, onDelete, filterIds = null }) {
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState('date')
   const [detail, setDetail] = useState(null)
 
   const view = useMemo(() => {
     let rows = receipts
+    if (filterIds) rows = rows.filter((r) => filterIds.has(r.id))
     if (category !== 'all') rows = rows.filter((r) => r.category === category)
     rows = [...rows].sort((a, b) => {
       if (sort === 'amount') return (b.total || 0) - (a.total || 0)
       return (b.purchase_date || '').localeCompare(a.purchase_date || '')
     })
     return rows
-  }, [receipts, category, sort])
+  }, [receipts, category, sort, filterIds])
 
   // Roll totals up into each receipt's base currency (usually one per container).
   // Receipts that couldn't be converted are counted separately, not hidden.

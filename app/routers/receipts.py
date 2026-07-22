@@ -9,15 +9,33 @@ model before anything is persisted.
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
-from ..api_models import Persona, Receipt, ReceiptCreate
+from ..api_models import (
+    AskRequest,
+    AskResponse,
+    LedgerSummary,
+    Persona,
+    Receipt,
+    ReceiptCreate,
+)
+from ..ask import AskContext, AskPlanner, planner_error_response, run_query
 from ..config import get_settings
-from ..deps import current_persona, get_fx, get_repository, get_storage
+from ..deps import (
+    current_persona,
+    get_ask_planner,
+    get_fx,
+    get_repository,
+    get_storage,
+)
 from ..fx import FxService
 from ..repository import Forbidden, NotFound, Repository
+from ..schemas import Category
 from ..storage import Storage
+from ..summary import compute_summary
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
@@ -106,6 +124,37 @@ def list_personal(
 ) -> list[Receipt]:
     """The acting persona's private, trip-less 'Everyday' ledger."""
     return repo.list_personal_receipts(persona.id)
+
+
+@router.get("/personal/summary", response_model=LedgerSummary)
+def personal_summary(
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+) -> LedgerSummary:
+    receipts = repo.list_personal_receipts(persona.id)
+    return compute_summary(receipts, get_settings().default_base_currency)
+
+
+@router.post("/personal/ask", response_model=AskResponse)
+def ask_personal(
+    body: AskRequest,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+    planner: AskPlanner = Depends(get_ask_planner),
+) -> AskResponse:
+    receipts = repo.list_personal_receipts(persona.id)
+    base_currency = get_settings().default_base_currency
+    ctx = AskContext(
+        today=date.today(),
+        base_currency=base_currency,
+        categories=[c.value for c in Category],
+        people=[persona.name],
+    )
+    try:
+        spec = planner.plan(body.question, ctx)
+    except Exception as exc:
+        return planner_error_response(body.question, exc)
+    return run_query(body.question, spec, receipts, [persona], base_currency)
 
 
 @router.get("/{receipt_id}", response_model=Receipt)

@@ -119,3 +119,36 @@ class Receipt(BaseModel):
     base_amount: float | None = None
     fx_rate: float | None = None
     fx_date: date | None = None
+
+
+# --- Summaries & ask --------------------------------------------------------
+
+class PersonPaid(BaseModel):
+    persona_id: str
+    amount: float  # total paid, in the container's base currency
+    count: int
+    # Settle-up (trips only): amount − fair share. Positive → owed to them;
+    # negative → they owe. 0 for the personal ledger.
+    balance: float = 0.0
+
+
+class LedgerSummary(BaseModel):
+    base_currency: str
+    total: float  # sum of converted amounts
+    receipt_count: int
+    not_converted: int  # receipts we couldn't convert (excluded from `total`)
+    fair_share: float = 0.0  # equal split of `total` across trip members
+    per_person: list[PersonPaid] = Field(default_factory=list)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str  # a human sentence
+    operation: str
+    value: float | None = None  # the computed number, when numeric
+    currency: str | None = None
+    matched: list[Receipt] = Field(default_factory=list)  # the receipts behind it
