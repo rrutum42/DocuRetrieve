@@ -22,7 +22,7 @@ from .extraction import extract_receipt
 from .routers import personas, receipts, trips
 from .schemas import ExtractionResult
 
-app = FastAPI(title="DocuRetrieve", version="0.1.0")
+app = FastAPI(title="DocuRetriever", version="0.1.0")
 
 # In dev the React app runs on Vite (port 5173) and calls this API on 8000.
 # In production the same process serves the built frontend, so CORS is moot.

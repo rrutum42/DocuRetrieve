@@ -89,14 +89,24 @@ def test_blank_date_string_coerces_to_none():
 
 
 def test_generation_error_is_caught_and_reported():
-    gen = raising_generate(RuntimeError("429 rate limit"))
+    gen = raising_generate(RuntimeError("connection reset by peer"))
 
     result = extract_receipt(IMG, MIME, generate=gen)
 
     assert result.receipt is None
     assert result.used_fallback is True
     assert "generation_error" in result.error
-    assert "rate limit" in result.error
+
+
+def test_quota_error_is_classified_as_rate_limited():
+    # A 429 / quota exception gets a distinct, user-actionable classification
+    # (drives the friendly "daily limit reached" message in the UI).
+    gen = raising_generate(RuntimeError("429 RESOURCE_EXHAUSTED: quota exceeded"))
+
+    result = extract_receipt(IMG, MIME, generate=gen)
+
+    assert result.used_fallback is True
+    assert result.error == "rate_limited"
 
 
 def test_schema_rejects_bad_category_and_falls_back():

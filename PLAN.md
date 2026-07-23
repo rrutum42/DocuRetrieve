@@ -1,4 +1,4 @@
-# DocuRetrieve — Build Plan
+# DocuRetriever — Build Plan
 
 > **Problem 3:** Turn messy documents into structured, queryable data.
 > **Interpretation:** A **trip-first family receipt ledger**. You organize spending into trips (like photo albums), invite the people on the trip (Splitwise-style personas), snap receipts inside a trip, and the system reads even bad phone photos into clean structured records you can *ask questions* about — with a per-person breakdown of who paid.
@@ -9,7 +9,7 @@
 
 **Who it's for:** Families / friend groups who travel together and share expenses, plus everyday household spending. Receipts pile up; nobody enters them; nobody remembers who paid for what.
 
-**The real problem:** Receipts are the messiest "document" people own — thermal paper, faded ink, foreign languages/currencies on trips, photographed at an angle in bad light. Manual entry is the friction that kills every budgeting habit, and "who paid what on the trip" is a recurring social headache. DocuRetrieve removes both: snap → it's in the trip → ask it anything → see who paid.
+**The real problem:** Receipts are the messiest "document" people own — thermal paper, faded ink, foreign languages/currencies on trips, photographed at an angle in bad light. Manual entry is the friction that kills every budgeting habit, and "who paid what on the trip" is a recurring social headache. DocuRetriever removes both: snap → it's in the trip → ask it anything → see who paid.
 
 **Why this scores well:** The messiness *is* the hard sub-problem the rubric rewards. Trips + personas give it a real product shape, not just a CRUD table.
 

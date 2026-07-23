@@ -1,6 +1,6 @@
 # Decisions
 
-A running log of the real calls made building DocuRetrieve. Honest and specific:
+A running log of the real calls made building DocuRetriever. Honest and specific:
 what I chose, what I seriously considered, why, and what I deliberately cut.
 
 ---

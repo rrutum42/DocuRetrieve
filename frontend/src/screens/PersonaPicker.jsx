@@ -1,9 +1,11 @@
 // Netflix-style entry screen: pick who you are, or create a new profile.
 
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { usePersona } from '../persona.jsx'
 import Avatar, { AVATAR_PALETTE } from '../components/Avatar.jsx'
+import retriever from '../../resources/retriever.png'
 
 export default function PersonaPicker() {
   const { choose } = usePersona()
@@ -30,8 +32,10 @@ export default function PersonaPicker() {
 
   return (
     <div className="picker">
+      <Link to="/" className="picker-home">← Home</Link>
+      <img src={retriever} alt="" className="picker-dog" />
       <h1>
-        Docu<span style={{ color: 'var(--accent)' }}>Retrieve</span>
+        Docu<span style={{ color: 'var(--accent)' }}>Retriever</span>
       </h1>
       <p>Who's using the ledger?</p>
 

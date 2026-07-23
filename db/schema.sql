@@ -1,4 +1,4 @@
--- DocuRetrieve schema (Postgres / Supabase)
+-- DocuRetriever schema (Postgres / Supabase)
 -- Run once in the Supabase SQL editor.
 --
 -- Note on security model: personas are app-level profiles, NOT Supabase auth

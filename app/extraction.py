@@ -37,12 +37,26 @@ provided schema. Rules:
    add "purchase_date" to low_confidence_fields.
 3. currency must be an ISO 4217 code (USD, EUR, INR, ...). Infer it from the symbol,
    language, or country if not printed.
-4. Never guess a total. If the total is unreadable or torn off, use null and add
-   "total" to low_confidence_fields. It is better to say "unsure" than to be wrong.
-5. Add ANY field you are not confident about to low_confidence_fields so a human
+4. The "total" is the ONE final amount the customer actually pays. Read it from
+   the field labelled Total, Grand Total, Amount Payable, Amount Due, Balance
+   Due, Net Payable, or Total Payable — whichever is the last/headline amount.
+   - On a utility, telecom, or tax bill there are many numbers (gross amount,
+     taxable value, individual charges, previous balance, energy/fixed charges).
+     Do NOT use any of those as the total — use the final amount payable.
+   - When a bill shows several payable figures (an early-payment DISCOUNTED
+     amount and a LATE-PAYMENT amount around a normal due amount), use the
+     normal current "amount payable / amount due" — not the discounted or late
+     figure.
+   - Prefer the clearly-labelled final payable amount even if it differs slightly
+     from a "gross" figure by rounding (e.g. amount payable 239 vs gross 238.84
+     -> use 239).
+   - Put the value into "total". If itemised, "subtotal" is the pre-tax amount.
+5. Never guess a total. If the final amount is unreadable, use null and add
+   "total" to low_confidence_fields. Better to say "unsure" than to be wrong.
+6. Add ANY field you are not confident about to low_confidence_fields so a human
    can review it.
-6. Choose the single best category from the allowed list.
-7. Extract line items when they are legible; skip them if they are not.
+7. Choose the single best category from the allowed list.
+8. Extract line items when they are legible; skip them if they are not.
 
 Return ONLY the JSON object."""
 
@@ -141,7 +155,12 @@ def extract_receipt(
         try:
             last_raw = gen(image_bytes, mime_type)
         except Exception as exc:  # network / rate-limit / SDK error
-            last_error = f"generation_error: {exc}"
+            msg = str(exc)
+            if "RESOURCE_EXHAUSTED" in msg or "429" in msg or "quota" in msg.lower():
+                # Free-tier daily cap — a distinct, user-actionable case.
+                last_error = "rate_limited"
+            else:
+                last_error = f"generation_error: {exc}"
             continue
 
         try:

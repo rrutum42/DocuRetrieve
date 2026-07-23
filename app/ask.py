@@ -420,8 +420,11 @@ def planner_error_response(question: str, exc: Exception) -> AskResponse:
     """Honest response when the planner can't run (rate limit / outage) — instead
     of silently pretending we understood and listing everything."""
     msg = str(exc)
-    if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-        answer = "The assistant is briefly rate-limited. Please try again in a moment."
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+        answer = (
+            "The assistant has hit its free-tier usage limit for now. "
+            "Please try again a little later."
+        )
     else:
         answer = "Sorry, I couldn't process that question just now. Try rephrasing it."
     return AskResponse(

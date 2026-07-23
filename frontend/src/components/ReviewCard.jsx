@@ -123,8 +123,9 @@ export default function ReviewCard({
                 <h2>Review &amp; confirm</h2>
                 {isUnreadable && (
                   <div className="banner">
-                    We couldn't read this automatically. Fill in what you can —
-                    nothing is saved until you confirm.
+                    {result?.error === 'rate_limited'
+                      ? '⏳ The daily free limit for auto-reading receipts has been reached (the AI reader runs on a free tier — about 20 per day). You can still enter the details manually below, or try again tomorrow.'
+                      : "We couldn't read this automatically. Fill in what you can — nothing is saved until you confirm."}
                   </div>
                 )}
                 {!isUnreadable && issues.length > 0 && (

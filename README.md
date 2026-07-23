@@ -1,4 +1,4 @@
-# DocuRetrieve
+# DocuRetriever
 
 Turn messy receipts into clean, queryable data — organized by **trip**, shared
 with the **people** on it, and answerable in plain English.

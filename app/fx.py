@@ -20,7 +20,7 @@ from typing import Protocol
 BASE_URL = "https://api.frankfurter.dev/v1"
 HTTP_TIMEOUT = 12
 # Frankfurter's edge (Cloudflare) 403s the default urllib User-Agent, so set one.
-USER_AGENT = "DocuRetrieve/0.1 (receipt ledger)"
+USER_AGENT = "DocuRetriever/0.1 (receipt ledger)"
 
 
 @dataclass

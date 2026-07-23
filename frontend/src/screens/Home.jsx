@@ -9,6 +9,7 @@ import Avatar from '../components/Avatar.jsx'
 import CreateTripModal from '../components/CreateTripModal.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
 import TripCover from '../components/TripCover.jsx'
+import EverydayCover from '../components/EverydayCover.jsx'
 import { usePersona } from '../persona.jsx'
 
 function dateRange(t) {
@@ -59,7 +60,9 @@ export default function Home() {
         <div className="section-title">Your ledger</div>
         <div className="grid">
           <Link to="/everyday" className="card">
-            <div className="card-cover everyday" />
+            <div className="card-cover illustrated">
+              <EverydayCover />
+            </div>
             <div className="card-body">
               <div className="card-title">My Everyday</div>
               <div className="card-meta">Personal receipts, just for you</div>
