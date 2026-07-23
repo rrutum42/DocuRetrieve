@@ -68,6 +68,12 @@ export const api = {
   listTripReceipts: (tripId) => req('/trips/' + tripId + '/receipts'),
   listPersonalReceipts: () => req('/receipts/personal'),
   deleteReceipt: (id) => req('/receipts/' + id, { method: 'DELETE' }),
+  disputeReceipt: (id, reason) =>
+    req('/receipts/' + id + '/dispute', {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  resolveDispute: (id) => req('/receipts/' + id + '/dispute', { method: 'DELETE' }),
 
   // Summaries & natural-language ask
   askTrip: (tripId, question) =>

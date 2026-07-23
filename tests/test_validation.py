@@ -120,6 +120,34 @@ def test_non_receipt_is_not_validated():
     assert validate_receipt(r, today=TODAY).issues == []
 
 
+# --- authenticity / completeness --------------------------------------------
+
+def test_bare_amount_on_paper_is_flagged_authenticity():
+    # Only a total (e.g. "5000" written on a napkin) -> sparse -> flagged.
+    r = ExtractedReceipt(is_receipt=True, currency="INR", total=5000.0)
+    report = validate_receipt(r, today=TODAY)
+    assert any(i.field == "authenticity" for i in report.issues)
+
+
+def test_normal_receipt_not_flagged_authenticity():
+    # merchant + date + itemization -> plenty of structure -> not flagged.
+    r = ExtractedReceipt(
+        is_receipt=True, merchant="Cafe", currency="INR", total=100.0,
+        purchase_date=date(2026, 6, 1), subtotal=90.0, tax=10.0,
+        line_items=[{"description": "Coffee", "amount": 90.0}],
+    )
+    assert not any(i.field == "authenticity" for i in validate_receipt(r, today=TODAY).issues)
+
+
+def test_minimal_but_plausible_receipt_not_flagged():
+    # merchant + date (2 signals) -> passes, even without line items.
+    r = ExtractedReceipt(
+        is_receipt=True, merchant="Kirana Store", currency="INR", total=200.0,
+        purchase_date=date(2026, 6, 1),
+    )
+    assert not any(i.field == "authenticity" for i in validate_receipt(r, today=TODAY).issues)
+
+
 # --- apply_report merges flags + fills derived ------------------------------
 
 def test_apply_report_fills_and_flags():

@@ -130,6 +130,52 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
   a hand-labeled image corpus — planned, see evals/README.md), and the second-LLM
   verification pass.
 
+## Save gate: a receipt must have a total > 0 (blocks zero-cost rows & non-receipts)
+
+- **Chose:** Reject saving a receipt whose total is missing or ≤ 0, enforced
+  **server-side** (422) with a matching client-side guard (the "Confirm & save"
+  button is disabled with a "discard if this isn't a receipt" hint).
+- **Considered:** relying solely on the model's `is_receipt` flag to keep
+  non-receipts out; allowing zero-total rows and filtering them later.
+- **Reasoning:** Two real gaps shared one fix. (1) `is_receipt` classification
+  is excellent but not guaranteed every run — a misread non-receipt (e.g. a koi-
+  pond photo) shouldn't be persistable. (2) The app previously accepted a
+  zero-cost receipt outright. A "total > 0" invariant closes both: a non-receipt
+  has no real total, and a zero-cost row is meaningless in a ledger. The server
+  is the enforcement point (defense in depth); the client guard is UX.
+- **Scope:** total is the hard gate; currency is NOT required at save (the
+  validation layer already flags a missing currency, and FX conversion degrades
+  gracefully) — keeping the gate focused avoids over-blocking legitimate saves.
+
+## Fabricated receipts: flag + social dispute, not a "fraud detector"
+
+- **Threat:** in a trip with settle-up, a member has motive to fake a receipt
+  (photograph "₹5000" written on paper) to inflate what they "paid" so others
+  owe more. The `total > 0` gate doesn't catch this — a fake has a number.
+- **Chose:** a two-layer, honest defense. (1) A **completeness/authenticity
+  signal** in the validation layer: a genuine issued receipt shows several of
+  {merchant, date, itemized lines, tax/subtotal}; a bare amount shows almost
+  none, so it's **flagged** ("looks unusually sparse — verify it's genuine") in
+  the review card and ledger. (2) A **member dispute** action: any trip member
+  who can see a receipt can flag it with a reason; it shows a 🚩 badge + banner
+  to everyone on the trip, and can be resolved.
+- **Considered / rejected:** blocking sparse receipts (our own eval proved legit
+  receipts are often handwritten/minimal — the hospital list, the college slip —
+  so blocking would reject real ones); an ML "is this fake" classifier as a hard
+  gate (no image-only system reliably detects a well-made fake — overselling it
+  would be dishonest).
+- **Reasoning:** the real defense in a *shared* ledger is **transparency**, and
+  it's already 90% there — every receipt is shared with members, shows the
+  original image, and is attributed to a persona. Formalizing that with a flag +
+  dispute matches how Splitwise-style trust actually works: people who can see
+  the evidence hold each other accountable. The completeness signal simply makes
+  the suspicious ones easy to spot.
+- **Stated limit (in README/here):** this is not fraud-proof. If the model both
+  misclassifies a fake as a receipt AND it carries enough fabricated structure,
+  it can still be saved — the human review + member visibility are the backstop,
+  not a guarantee. Honesty about this boundary is the right engineering posture.
+- **Cut:** hard blocking, and an automated authenticity classifier as a gate.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

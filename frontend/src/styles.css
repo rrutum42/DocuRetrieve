@@ -544,6 +544,28 @@ select:focus {
   font-size: 18px;
   font-weight: 700;
 }
+.save-hint {
+  font-size: 13px;
+  color: #a9701a;
+  margin-bottom: 10px;
+  text-align: right;
+}
+.disputed-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a3341a;
+  background: #fdece8;
+  border: 1px solid #f2c4b6;
+  padding: 1px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.dispute-banner {
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
 .validation-panel {
   display: flex;
   flex-direction: column;

@@ -49,6 +49,11 @@ export default function ReviewCard({
     setForm((f) => ({ ...f, [k]: v }))
   }
 
+  // A receipt must have a positive total to be saveable — this blocks zero-cost
+  // rows and non-receipts (which have no real total).
+  const totalNum = num(form.total)
+  const canSave = totalNum !== null && totalNum > 0
+
   async function save() {
     setSaving(true)
     setError(null)
@@ -244,11 +249,22 @@ export default function ReviewCard({
                   </div>
                 )}
 
+                {!canSave && (
+                  <div className="save-hint">
+                    {totalNum !== null && totalNum <= 0
+                      ? 'Total must be greater than 0.'
+                      : 'Enter a total to save — if this isn’t a receipt, discard it.'}
+                  </div>
+                )}
                 <div className="modal-actions">
                   <button className="btn ghost" onClick={onClose} disabled={saving}>
-                    Cancel
+                    {canSave ? 'Cancel' : 'Discard'}
                   </button>
-                  <button className="btn primary" onClick={save} disabled={saving}>
+                  <button
+                    className="btn primary"
+                    onClick={save}
+                    disabled={saving || !canSave}
+                  >
                     {saving ? 'Saving…' : 'Confirm & save'}
                   </button>
                 </div>

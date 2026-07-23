@@ -140,6 +140,34 @@ def validate_receipt(
             )
         )
 
+    # --- Authenticity / completeness ---------------------------------------
+    # A genuine issued receipt almost always shows several of these together;
+    # a fabricated "amount written on plain paper" shows almost none. We FLAG
+    # (never block) so legitimate-but-minimal receipts still save, but a sparse
+    # one is marked for a second look — important where a trip's settle-up gives
+    # someone a motive to invent a claim. Not fraud-proof (see decisions.md), a
+    # signal for the human + trip members to weigh alongside the visible image.
+    structural = sum(
+        [
+            bool(r.merchant),
+            r.purchase_date is not None,
+            bool(r.line_items),
+            (r.tax is not None or sub is not None),
+        ]
+    )
+    if r.is_receipt and total is not None and structural < 2:
+        issues.append(
+            ValidationIssue(
+                field="authenticity",
+                severity="warning",
+                message=(
+                    "This looks unusually sparse for a receipt — few of the usual "
+                    "details (merchant, date, itemized amounts) are present. "
+                    "Double-check it's a genuine receipt before trusting the amount."
+                ),
+            )
+        )
+
     return ValidationReport(issues=issues, derived=derived)
 
 

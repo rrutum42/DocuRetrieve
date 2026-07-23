@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from ..api_models import (
     AskRequest,
     AskResponse,
+    DisputeRequest,
     LedgerSummary,
     Persona,
     Receipt,
@@ -33,9 +34,10 @@ from ..deps import (
 )
 from ..fx import FxService
 from ..repository import Forbidden, NotFound, Repository
-from ..schemas import Category
+from ..schemas import Category, ExtractedReceipt
 from ..storage import Storage
 from ..summary import compute_summary
+from ..validation import validate_receipt
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
@@ -70,12 +72,45 @@ async def create_receipt(
     the app default. Conversion failures are non-fatal — the receipt saves with
     its native amount only.
     """
+    mime = _validate_upload(file)  # reject non-image/PDF uploads first
+
     try:
         data = ReceiptCreate.model_validate_json(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors())
 
-    mime = _validate_upload(file)
+    # A receipt must record a real, positive amount. This is the server-side
+    # backstop against saving a zero-cost row OR a non-receipt that slipped past
+    # the reader (a photo of a koi pond has no total, so it can't be saved here).
+    if data.total is None or data.total <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="A receipt needs a total greater than 0. "
+            "Enter the amount, or discard if this isn't a receipt.",
+        )
+
+    # Re-validate server-side and merge the flags into what we persist, so the
+    # completeness/authenticity signal can't be stripped by a client POSTing
+    # directly to hide a fabricated receipt (anti-fabrication, defense in depth).
+    probe = ExtractedReceipt(
+        is_receipt=True,
+        merchant=data.merchant,
+        purchase_date=data.purchase_date,
+        currency=data.currency,
+        subtotal=data.subtotal,
+        tax=data.tax,
+        tip=data.tip,
+        total=data.total,
+        category=data.category,
+        payment_method=data.payment_method,
+        line_items=[li.model_dump() for li in data.line_items],
+        low_confidence_fields=data.low_confidence_fields,
+    )
+    report = validate_receipt(probe)
+    data.low_confidence_fields = list(
+        dict.fromkeys([*data.low_confidence_fields, *report.flagged_fields()])
+    )
+
     image_bytes = await file.read()
     if len(image_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
@@ -185,5 +220,33 @@ def delete_receipt(
 ) -> None:
     try:
         repo.delete_receipt(receipt_id, persona.id)
+    except (NotFound, Forbidden):
+        raise HTTPException(status_code=404, detail="Receipt not found.")
+
+
+@router.post("/{receipt_id}/dispute", response_model=Receipt)
+def dispute_receipt(
+    receipt_id: str,
+    body: DisputeRequest,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+) -> Receipt:
+    """Flag a receipt as untrustworthy. Any member who can see it may dispute —
+    the social defense against fabricated claims in a shared trip."""
+    try:
+        return repo.set_dispute(receipt_id, persona.id, body.reason)
+    except (NotFound, Forbidden):
+        raise HTTPException(status_code=404, detail="Receipt not found.")
+
+
+@router.delete("/{receipt_id}/dispute", response_model=Receipt)
+def resolve_dispute(
+    receipt_id: str,
+    persona: Persona = Depends(current_persona),
+    repo: Repository = Depends(get_repository),
+) -> Receipt:
+    """Clear a dispute (mark it resolved)."""
+    try:
+        return repo.set_dispute(receipt_id, persona.id, None)
     except (NotFound, Forbidden):
         raise HTTPException(status_code=404, detail="Receipt not found.")

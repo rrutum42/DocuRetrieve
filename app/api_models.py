@@ -120,6 +120,14 @@ class Receipt(BaseModel):
     fx_rate: float | None = None
     fx_date: date | None = None
 
+    # Dispute: a trip member flagged this receipt as untrustworthy.
+    disputed_by_persona_id: str | None = None
+    dispute_reason: str | None = None
+
+
+class DisputeRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=300)
+
 
 # --- Summaries & ask --------------------------------------------------------
 

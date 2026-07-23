@@ -209,6 +209,9 @@ export default function TripView({ everyday = false }) {
           receipts={receipts}
           personas={personas}
           onDelete={deleteReceipt}
+          onUpdate={(u) =>
+            setReceipts((rs) => rs.map((x) => (x.id === u.id ? u : x)))
+          }
           filterIds={askResult ? new Set(askResult.matched.map((m) => m.id)) : null}
         />
       </div>

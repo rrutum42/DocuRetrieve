@@ -57,6 +57,8 @@ create table if not exists receipts (
     base_amount        numeric,              -- total converted into base_currency
     fx_rate            numeric,              -- rate applied (native -> base)
     fx_date            date,                 -- date whose rate was used
+    disputed_by_persona_id uuid references personas(id) on delete set null, -- member who flagged it
+    dispute_reason     text,                 -- why they flagged it
     created_at         timestamptz not null default now()
 );
 

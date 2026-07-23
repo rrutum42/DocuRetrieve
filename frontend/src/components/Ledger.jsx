@@ -7,7 +7,7 @@ import Avatar from './Avatar.jsx'
 import ReceiptDetail from './ReceiptDetail.jsx'
 import { money, fmtDate } from '../format'
 
-export default function Ledger({ receipts, personas, onDelete, filterIds = null }) {
+export default function Ledger({ receipts, personas, onDelete, onUpdate, filterIds = null }) {
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState('date')
   const [detail, setDetail] = useState(null)
@@ -94,10 +94,16 @@ export default function Ledger({ receipts, personas, onDelete, filterIds = null 
               <div className="rr-main">
                 <div className="rr-merchant">
                   {r.merchant || 'Unknown merchant'}
-                  {r.low_confidence_fields?.length > 0 && (
-                    <span className="lowconf-tag" title="Some fields were uncertain">
-                      review
+                  {r.disputed_by_persona_id ? (
+                    <span className="disputed-tag" title={r.dispute_reason || 'Disputed'}>
+                      🚩 disputed
                     </span>
+                  ) : (
+                    r.low_confidence_fields?.length > 0 && (
+                      <span className="lowconf-tag" title="Some fields were uncertain">
+                        review
+                      </span>
+                    )
                   )}
                 </div>
                 <div className="rr-sub">
@@ -142,6 +148,7 @@ export default function Ledger({ receipts, personas, onDelete, filterIds = null 
             setDetail(null)
             onDelete(r)
           }}
+          onUpdate={onUpdate}
         />
       )}
     </div>

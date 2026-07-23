@@ -74,6 +74,9 @@ class Repository(Protocol):
     def list_personal_receipts(self, persona_id: str) -> list[Receipt]: ...
     def get_receipt(self, receipt_id: str, persona_id: str) -> Receipt: ...
     def delete_receipt(self, receipt_id: str, persona_id: str) -> None: ...
+    def set_dispute(
+        self, receipt_id: str, persona_id: str, reason: str | None
+    ) -> Receipt: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -237,6 +240,19 @@ class InMemoryRepository:
         self.get_receipt(receipt_id, persona_id)  # enforces visibility
         self._receipts.pop(receipt_id, None)
 
+    def set_dispute(
+        self, receipt_id: str, persona_id: str, reason: str | None
+    ) -> Receipt:
+        r = self.get_receipt(receipt_id, persona_id)  # enforces visibility
+        updated = r.model_copy(
+            update={
+                "disputed_by_persona_id": persona_id if reason else None,
+                "dispute_reason": reason,
+            }
+        )
+        self._receipts[receipt_id] = updated
+        return updated
+
 
 # --------------------------------------------------------------------------- #
 # Supabase implementation (live)
@@ -289,6 +305,8 @@ class SupabaseRepository:
             base_amount=row.get("base_amount"),
             fx_rate=row.get("fx_rate"),
             fx_date=row.get("fx_date"),
+            disputed_by_persona_id=row.get("disputed_by_persona_id"),
+            dispute_reason=row.get("dispute_reason"),
         )
 
     def _assemble(self, rows: list[dict]) -> list[Receipt]:
@@ -416,6 +434,18 @@ class SupabaseRepository:
         self.get_receipt(receipt_id, persona_id)  # visibility
         # line_items cascade via FK; the stored image is left as an orphan (v1).
         self._db.table("receipts").delete().eq("id", receipt_id).execute()
+
+    def set_dispute(
+        self, receipt_id: str, persona_id: str, reason: str | None
+    ) -> Receipt:
+        self.get_receipt(receipt_id, persona_id)  # enforces visibility
+        self._db.table("receipts").update(
+            {
+                "disputed_by_persona_id": persona_id if reason else None,
+                "dispute_reason": reason,
+            }
+        ).eq("id", receipt_id).execute()
+        return self.get_receipt(receipt_id, persona_id)
 
     # personas
     def list_personas(self) -> list[Persona]:

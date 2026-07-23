@@ -143,6 +143,25 @@ def test_conversion_failure_saves_native_only(client, fx):
     assert r["fx_rate"] is None
 
 
+def test_zero_total_is_rejected(client):
+    mom = _persona(client, "Mom")
+    r = _save_receipt(client, mom["id"], {"trip_id": None, "currency": "INR", "total": 0})
+    assert r.status_code == 422
+    assert "greater than 0" in str(r.json()["detail"])
+
+
+def test_missing_total_is_rejected(client):
+    mom = _persona(client, "Mom")
+    r = _save_receipt(client, mom["id"], {"trip_id": None, "currency": "INR"})
+    assert r.status_code == 422
+
+
+def test_negative_total_is_rejected(client):
+    mom = _persona(client, "Mom")
+    r = _save_receipt(client, mom["id"], {"trip_id": None, "currency": "INR", "total": -5})
+    assert r.status_code == 422
+
+
 def test_invalid_category_is_rejected(client):
     mom = _persona(client, "Mom")
     trip = client.post(
@@ -219,7 +238,7 @@ def test_personal_ledger_is_private(client):
 
 def test_delete_receipt(client):
     mom = _persona(client, "Mom")
-    r = _save_receipt(client, mom["id"], {"trip_id": None, "total": 3})
+    r = _save_receipt(client, mom["id"], {"trip_id": None, "currency": "INR", "total": 3})
     rid = r.json()["id"]
     d = client.delete(f"/api/receipts/{rid}", headers={"X-Persona-Id": mom["id"]})
     assert d.status_code == 204
@@ -229,3 +248,82 @@ def test_delete_receipt(client):
         ).status_code
         == 404
     )
+
+
+def test_sparse_receipt_is_flagged_server_side(client):
+    # A client POSTs a bare amount with NO low_confidence_fields (trying to hide
+    # it) — the server re-validates and flags authenticity anyway.
+    mom = _persona(client, "Mom")
+    r = _save_receipt(
+        client,
+        mom["id"],
+        {"trip_id": None, "currency": "INR", "total": 5000, "low_confidence_fields": []},
+    ).json()
+    assert "authenticity" in r["low_confidence_fields"]
+
+
+def test_normal_receipt_not_flagged_server_side(client):
+    mom = _persona(client, "Mom")
+    r = _save_receipt(
+        client,
+        mom["id"],
+        {
+            "trip_id": None,
+            "merchant": "Cafe",
+            "purchase_date": "2026-06-01",
+            "currency": "INR",
+            "subtotal": 90,
+            "tax": 10,
+            "total": 100,
+        },
+    ).json()
+    assert "authenticity" not in r["low_confidence_fields"]
+
+
+def test_member_can_dispute_and_resolve(client):
+    mom = _persona(client, "Mom")
+    dad = _persona(client, "Dad")
+    trip = client.post(
+        "/api/trips",
+        json={"name": "Goa", "member_ids": [dad["id"]]},
+        headers={"X-Persona-Id": mom["id"]},
+    ).json()
+    # Mom saves a suspicious-looking receipt
+    r = _save_receipt(
+        client, mom["id"], {"trip_id": trip["id"], "currency": "INR", "total": 5000}
+    ).json()
+
+    # Dad (a member) disputes it
+    d = client.post(
+        f"/api/receipts/{r['id']}/dispute",
+        json={"reason": "This is just a number on paper, not a real receipt."},
+        headers={"X-Persona-Id": dad["id"]},
+    )
+    assert d.status_code == 200
+    assert d.json()["disputed_by_persona_id"] == dad["id"]
+    assert "number on paper" in d.json()["dispute_reason"]
+
+    # Resolve clears it
+    res = client.delete(
+        f"/api/receipts/{r['id']}/dispute", headers={"X-Persona-Id": mom["id"]}
+    )
+    assert res.status_code == 200
+    assert res.json()["disputed_by_persona_id"] is None
+
+
+def test_stranger_cannot_dispute(client):
+    mom = _persona(client, "Mom")
+    kid = _persona(client, "Kid")  # not on the trip
+    trip = client.post(
+        "/api/trips", json={"name": "Goa"}, headers={"X-Persona-Id": mom["id"]}
+    ).json()
+    r = _save_receipt(
+        client, mom["id"], {"trip_id": trip["id"], "currency": "INR", "total": 100}
+    ).json()
+    # Kid can't see the trip -> can't dispute
+    d = client.post(
+        f"/api/receipts/{r['id']}/dispute",
+        json={"reason": "nope"},
+        headers={"X-Persona-Id": kid["id"]},
+    )
+    assert d.status_code == 404

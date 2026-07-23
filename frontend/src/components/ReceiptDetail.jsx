@@ -1,6 +1,8 @@
 // Read-only view of an already-saved receipt: the stored original image plus the
 // full structured breakdown. Opened by clicking a row in the ledger.
 
+import { useState } from 'react'
+import { api } from '../api'
 import Avatar from './Avatar.jsx'
 
 function money(amount, currency) {
@@ -24,10 +26,47 @@ function fmtDate(d) {
   })
 }
 
-export default function ReceiptDetail({ receipt: r, personas, onClose, onDelete }) {
+export default function ReceiptDetail({
+  receipt: initial,
+  personas,
+  onClose,
+  onDelete,
+  onUpdate,
+}) {
+  const [r, setR] = useState(initial)
+  const [busy, setBusy] = useState(false)
   const payer = personas[r.paid_by_persona_id]
   const low = new Set(r.low_confidence_fields || [])
   const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+
+  const isTrip = !!r.trip_id
+  const disputer = r.disputed_by_persona_id ? personas[r.disputed_by_persona_id] : null
+
+  async function flag() {
+    const reason = window.prompt(
+      "Why are you flagging this receipt? (e.g. “not a real receipt”)",
+    )
+    if (!reason || !reason.trim()) return
+    setBusy(true)
+    try {
+      const updated = await api.disputeReceipt(r.id, reason.trim())
+      setR(updated)
+      onUpdate?.(updated)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resolve() {
+    setBusy(true)
+    try {
+      const updated = await api.resolveDispute(r.id)
+      setR(updated)
+      onUpdate?.(updated)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const Row = ({ label, value, field }) => (
     <div className="detail-row">
@@ -63,6 +102,13 @@ export default function ReceiptDetail({ receipt: r, personas, onClose, onDelete 
               {r.category && <span className="cat-chip">{cap(r.category)}</span>}
               <span>{fmtDate(r.purchase_date)}</span>
             </div>
+
+            {r.disputed_by_persona_id && (
+              <div className="banner error dispute-banner">
+                <strong>🚩 Disputed{disputer ? ` by ${disputer.name}` : ''}.</strong>
+                {r.dispute_reason ? ' “' + r.dispute_reason + '”' : ''}
+              </div>
+            )}
 
             <div className="detail-list">
               <Row label="Total" value={<strong>{money(r.total, r.currency)}</strong>} field="total" />
@@ -124,9 +170,19 @@ export default function ReceiptDetail({ receipt: r, personas, onClose, onDelete 
             )}
 
             <div className="modal-actions" style={{ marginTop: 22 }}>
-              <button className="btn ghost" onClick={() => onDelete(r)}>
+              <button className="btn ghost" onClick={() => onDelete(r)} disabled={busy}>
                 Delete
               </button>
+              {isTrip &&
+                (r.disputed_by_persona_id ? (
+                  <button className="btn ghost" onClick={resolve} disabled={busy}>
+                    Resolve dispute
+                  </button>
+                ) : (
+                  <button className="btn danger-link" onClick={flag} disabled={busy}>
+                    🚩 Flag as suspicious
+                  </button>
+                ))}
               <button className="btn primary" onClick={onClose}>
                 Close
               </button>
