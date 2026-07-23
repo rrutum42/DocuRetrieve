@@ -176,6 +176,29 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
   not a guarantee. Honesty about this boundary is the right engineering posture.
 - **Cut:** hard blocking, and an automated authenticity classifier as a gate.
 
+## Deploy: one Docker image on Render, not the native Python runtime
+
+- **Chose:** A multi-stage Dockerfile (Node builds the React frontend → Python
+  runs FastAPI and serves that build) deployed via a `render.yaml` blueprint as a
+  single free web service.
+- **Considered:** (a) Render's native Python runtime with a build command;
+  (b) two services — a static site for the frontend + a web service for the API.
+- **Reasoning:**
+  - The app is deliberately *one process serving both* API and frontend. Render's
+    native Python runtime doesn't reliably provide Node to build the React app,
+    so a single-language runtime can't produce the bundle. Docker gives us both
+    toolchains cleanly and makes the build reproducible locally (`docker build`).
+  - Two services would split the deploy, add CORS/config surface, and contradict
+    the single-deploy design. Not worth it for a free-tier project.
+  - Deps are installed from `requirements.txt` (mirroring pyproject) rather than
+    `pip install .`, so the app is NOT installed as a package — `app/` and
+    `frontend/dist/` stay siblings, which is what `main.py` relies on to locate
+    the built frontend.
+  - Secrets (`GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`) are `sync:false` in
+    the blueprint — set in the dashboard, never committed. `.dockerignore` keeps
+    `.env` and the private receipt images out of the image.
+- **Cut:** native-runtime deploy and the split frontend/backend hosting.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

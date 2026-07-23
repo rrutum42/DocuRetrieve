@@ -1,0 +1,27 @@
+# Render Blueprint — one Docker web service that builds the frontend and serves
+# it from FastAPI. Deploy: on Render, New > Blueprint, connect this repo.
+# Then set the three secret env vars (marked sync:false) in the dashboard.
+services:
+  - type: web
+    name: docuretriever
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # --- secrets: set these in the Render dashboard (not stored in the repo) ---
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      # --- non-secret config ---
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: GEMINI_ASK_MODEL
+        value: gemini-flash-lite-latest
+      - key: DEFAULT_BASE_CURRENCY
+        value: INR

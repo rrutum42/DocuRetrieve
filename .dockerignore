@@ -1,0 +1,24 @@
+# Keep the build context small and secrets/private data OUT of the image.
+.git
+.venv
+venv
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+
+# Node / build artifacts (rebuilt inside the image)
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Secrets & local config — env comes from Render's dashboard, never the image
+.env
+.env.local
+.idea
+.claude
+
+# Private eval data (real receipts / labels) must never enter the image
+evals/fixtures/images
+evals/fixtures/labels.json
+evals/fixtures/predictions.json

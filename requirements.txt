@@ -1,0 +1,10 @@
+# Runtime dependencies for deployment (mirrors pyproject.toml [project.dependencies]).
+# Used by the Dockerfile so we install deps without installing the app as a
+# package (keeps app/ and frontend/dist/ as siblings for the static-file paths).
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.12
+pydantic>=2.9
+pydantic-settings>=2.5
+google-genai>=0.3
+supabase>=2.9

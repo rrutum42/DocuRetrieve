@@ -14,11 +14,12 @@ paid" breakdown and a natural-language ask box.
 
 ## Stack (all $0)
 
-- **FastAPI** (Python 3.14) — API + serves the built frontend as one deploy
-- **Gemini 2.5 Flash** — image/PDF → structured JSON in a single call (no separate OCR)
+- **FastAPI** (Python) — API + serves the built frontend as one deploy
+- **Gemini** (`gemini-flash-latest` vision) — image/PDF → structured JSON in a
+  single call (no separate OCR); `gemini-flash-lite-latest` powers the ask box
 - **Supabase** — Postgres + file storage (free tier)
 - **React (Vite)** frontend
-- **Render** free web service for hosting
+- **Render** free web service (single Docker image) for hosting
 
 ## Run it locally
 
@@ -67,7 +68,31 @@ same seam with recorded fixtures, so `pytest` runs fully offline.
 ## Database
 
 Run [`db/schema.sql`](./db/schema.sql) once in the Supabase SQL editor to create
-the `personas`, `trips`, `trip_members`, `receipts`, and `line_items` tables.
+the `personas`, `trips`, `trip_members`, `receipts`, and `line_items` tables,
+then apply the migrations in [`db/migrations/`](./db/migrations) in order.
+
+## Deploy (Render)
+
+The whole app ships as **one Docker image** — a Node stage builds the React
+frontend, a Python stage runs FastAPI and serves it. One service, no separate
+frontend host.
+
+1. Push this repo to GitHub.
+2. On [Render](https://render.com): **New → Blueprint**, connect the repo. It
+   reads [`render.yaml`](./render.yaml) and provisions a free Docker web service.
+3. In the service's **Environment**, set the three secrets (the blueprint marks
+   them `sync:false`): `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`.
+   (`GEMINI_MODEL`, `GEMINI_ASK_MODEL`, `DEFAULT_BASE_CURRENCY` come preset.)
+4. Make sure `db/schema.sql` + the migrations have been run on your Supabase
+   project.
+5. Deploy. Render builds the image and serves at `https://<name>.onrender.com`;
+   `/api/health` is the health check.
+
+> Build it locally the same way Render does: `docker build -t docuretriever .`
+> then `docker run -p 8000:8000 --env-file .env docuretriever`.
+>
+> Free-tier note: the service spins down after inactivity, so the first request
+> after idle takes ~30s to wake.
 
 ## Project layout
 
