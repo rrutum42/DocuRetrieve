@@ -17,7 +17,7 @@ from ..api_models import (
     Trip,
     TripCreate,
 )
-from ..ask import AskContext, AskPlanner, planner_error_response, run_query
+from ..ask import AskContext, AskPlanner, TripInfo, planner_error_response, run_query
 from ..deps import current_persona, get_ask_planner, get_repository
 from ..repository import Forbidden, NotFound, Repository
 from ..schemas import Category
@@ -98,12 +98,25 @@ def ask_trip(
         raise HTTPException(status_code=404, detail="Trip not found.")
 
     personas = repo.list_personas()
-    members = [p for p in personas if p.id in trip.member_ids]
+    # Give the planner ALL persona names (they're public on the picker), not just
+    # trip members — otherwise a question about a non-member ("how much did Bob
+    # pay" when Bob isn't on the trip) can't bind paid_by, and the payer filter
+    # silently drops, turning it into a whole-trip sum. Membership is still
+    # enforced separately via member_ids (e.g. for settle-up).
     ctx = AskContext(
         today=date.today(),
         base_currency=trip.base_currency,
         categories=[c.value for c in Category],
-        people=[p.name for p in members],
+        people=[p.name for p in personas],
+    )
+    by_id = {p.id: p for p in personas}
+    trip_info = TripInfo(
+        name=trip.name,
+        base_currency=trip.base_currency,
+        member_names=[by_id[m].name for m in trip.member_ids if m in by_id],
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        is_personal=False,
     )
     try:
         spec = planner.plan(body.question, ctx)
@@ -116,6 +129,7 @@ def ask_trip(
         personas,
         trip.base_currency,
         member_ids=trip.member_ids,
+        trip_info=trip_info,
     )
 
 

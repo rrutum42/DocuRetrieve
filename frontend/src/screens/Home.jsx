@@ -7,7 +7,9 @@ import { api } from '../api'
 import Header from '../components/Header.jsx'
 import Avatar from '../components/Avatar.jsx'
 import CreateTripModal from '../components/CreateTripModal.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import TripCover from '../components/TripCover.jsx'
+import { usePersona } from '../persona.jsx'
 
 function dateRange(t) {
   if (!t.start_date && !t.end_date) return null
@@ -22,11 +24,13 @@ function dateRange(t) {
 
 export default function Home() {
   const navigate = useNavigate()
+  const { persona } = usePersona()
   const [trips, setTrips] = useState([])
   const [personas, setPersonas] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null) // trip pending deletion
 
   async function load() {
     setLoading(true)
@@ -74,6 +78,20 @@ export default function Home() {
             <Link key={t.id} to={'/trip/' + t.id} className="card">
               <div className="card-cover illustrated">
                 <TripCover trip={t} />
+                {t.created_by === persona?.id && (
+                  <button
+                    className="card-delete"
+                    title="Delete trip"
+                    aria-label={`Delete ${t.name}`}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setPendingDelete(t)
+                    }}
+                  >
+                    🗑
+                  </button>
+                )}
               </div>
               <div className="card-body">
                 <div className="card-title">{t.name}</div>
@@ -105,6 +123,20 @@ export default function Home() {
             setCreating(false)
             navigate('/trip/' + trip.id)
           }}
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          title={`Delete "${pendingDelete.name}"?`}
+          message="This permanently deletes the trip and all its receipts. This cannot be undone."
+          confirmLabel="Delete trip"
+          onConfirm={async () => {
+            await api.deleteTrip(pendingDelete.id)
+            setTrips((ts) => ts.filter((x) => x.id !== pendingDelete.id))
+            setPendingDelete(null)
+          }}
+          onClose={() => setPendingDelete(null)}
         />
       )}
     </>

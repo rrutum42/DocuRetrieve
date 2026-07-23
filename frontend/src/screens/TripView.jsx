@@ -11,6 +11,7 @@ import Ledger from '../components/Ledger.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
 import AskBox from '../components/AskBox.jsx'
 import WhoPaid from '../components/WhoPaid.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import { usePersona } from '../persona.jsx'
 
 export default function TripView({ everyday = false }) {
@@ -29,6 +30,7 @@ export default function TripView({ everyday = false }) {
   const [extracting, setExtracting] = useState(false)
   const [review, setReview] = useState(null) // { result, file }
   const [askResult, setAskResult] = useState(null) // AskResponse | null
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -87,18 +89,8 @@ export default function TripView({ everyday = false }) {
   }
 
   async function deleteTrip() {
-    const n = receipts.length
-    const msg =
-      `Delete "${trip.name}"?` +
-      (n ? ` This also deletes ${n} receipt${n === 1 ? '' : 's'}.` : '') +
-      ' This cannot be undone.'
-    if (!confirm(msg)) return
-    try {
-      await api.deleteTrip(trip.id)
-      navigate('/')
-    } catch (e) {
-      setError(e.message)
-    }
+    await api.deleteTrip(trip.id)
+    navigate('/') // ConfirmModal surfaces any error; on success we leave the page
   }
 
   if (loading) {
@@ -178,7 +170,7 @@ export default function TripView({ everyday = false }) {
               {extracting ? 'Reading receipt…' : '＋ Add receipt'}
             </button>
             {!everyday && trip.created_by === persona.id && (
-              <button className="btn danger-link" onClick={deleteTrip}>
+              <button className="btn danger-link" onClick={() => setConfirmDelete(true)}>
                 Delete trip
               </button>
             )}
@@ -195,7 +187,8 @@ export default function TripView({ everyday = false }) {
               everyday
                 ? ['How much in total?', 'What did I spend on groceries?', 'How many receipts?']
                 : [
-                    'How much in total?',
+                    'Who was involved in this trip?',
+                    'Tell me about this trip',
                     'What did we spend on dining?',
                     `How much is owed to ${persona.name}?`,
                   ]
@@ -241,6 +234,22 @@ export default function TripView({ everyday = false }) {
             setTrip(t)
             setAdding(false)
           }}
+        />
+      )}
+
+      {confirmDelete && !everyday && (
+        <ConfirmModal
+          title={`Delete "${trip.name}"?`}
+          message={
+            (receipts.length
+              ? `This permanently deletes the trip and its ${receipts.length} receipt${
+                  receipts.length === 1 ? '' : 's'
+                }. `
+              : 'This permanently deletes the trip. ') + 'This cannot be undone.'
+          }
+          confirmLabel="Delete trip"
+          onConfirm={deleteTrip}
+          onClose={() => setConfirmDelete(false)}
         />
       )}
     </>

@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api_models import Persona, Receipt
-from app.ask import AskPlanner, QuerySpec, run_query
+from app.ask import AskPlanner, QuerySpec, TripInfo, run_query
 from app.deps import get_ask_planner, get_fx, get_repository, get_storage
 from app.main import app
 from app.repository import InMemoryRepository
@@ -108,9 +108,39 @@ def test_merchant_filter():
     assert r.value == 150.0
 
 
-def test_no_match_is_graceful():
+def test_sum_for_payer_with_zero_expenses_is_zero_not_unanswered():
+    # Dad is a real person, but here he paid for nothing -> the answer is 0, not
+    # "no receipts found".
+    only_mom = [rcpt("mom", 100.0), rcpt("mom", 50.0)]
     r = run_query(
-        "fuel spend", QuerySpec(operation="sum", category="fuel"), RECEIPTS, PEOPLE, "INR"
+        "how much did Dad pay?",
+        QuerySpec(operation="sum", paid_by="Dad"),
+        only_mom,
+        PEOPLE,
+        "INR",
+    )
+    assert r.value == 0.0
+    assert r.currency == "INR"
+    assert "Dad" in r.answer
+
+
+def test_count_for_payer_with_zero_expenses_is_zero():
+    only_mom = [rcpt("mom", 100.0)]
+    r = run_query(
+        "how many did Dad pay for?",
+        QuerySpec(operation="count", paid_by="Dad"),
+        only_mom,
+        PEOPLE,
+        "INR",
+    )
+    assert r.value == 0.0
+    assert "0 receipts" in r.answer
+
+
+def test_average_with_no_match_still_says_none():
+    # average has no meaningful zero -> stays "no receipts found"
+    r = run_query(
+        "avg fuel", QuerySpec(operation="average", category="fuel"), RECEIPTS, PEOPLE, "INR"
     )
     assert r.value is None
     assert "No receipts" in r.answer
@@ -251,6 +281,105 @@ def test_ask_endpoint_end_to_end(client):
     assert body["value"] == 150.0
     assert body["currency"] == "INR"
     assert len(body["matched"]) == 2
+
+
+def test_members_lists_trip_people():
+    info = TripInfo(name="France 2026", base_currency="INR", member_names=["Mom", "Dad", "Kid"])
+    r = run_query(
+        "who was involved?",
+        QuerySpec(operation="members"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+        trip_info=info,
+    )
+    assert r.value == 3.0
+    assert "France 2026" in r.answer
+    assert "Mom, Dad, and Kid" in r.answer
+
+
+def test_members_on_personal_ledger():
+    info = TripInfo(name="My Everyday", base_currency="INR", member_names=["Mom"], is_personal=True)
+    r = run_query(
+        "who's on this?", QuerySpec(operation="members"), RECEIPTS, PEOPLE, "INR", trip_info=info
+    )
+    assert "personal ledger" in r.answer.lower()
+
+
+def test_overview_reports_metadata_and_totals():
+    from datetime import date as _d
+
+    info = TripInfo(
+        name="France 2026",
+        base_currency="INR",
+        member_names=["Mom", "Dad"],
+        start_date=_d(2026, 6, 1),
+        end_date=_d(2026, 6, 10),
+    )
+    r = run_query(
+        "tell me about this trip",
+        QuerySpec(operation="overview"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+        trip_info=info,
+    )
+    assert "France 2026" in r.answer
+    assert "2026-06-01 to 2026-06-10" in r.answer
+    assert "Mom and Dad" in r.answer
+    assert "3 receipts" in r.answer      # RECEIPTS has 3
+    assert r.value == 350.0              # 100 + 200 + 50
+    assert len(r.matched) == 3           # overview returns the full breakdown
+
+
+class RecordingPlanner:
+    """Captures the AskContext it was given, returns a fixed spec."""
+
+    def __init__(self, spec):
+        self.spec = spec
+        self.seen_context = None
+
+    def plan(self, question, context):
+        self.seen_context = context
+        return self.spec
+
+
+def test_ask_exposes_non_members_to_planner():
+    """Regression: a question about a persona who isn't on the trip must still be
+    bindable, else the payer filter drops and a payer question becomes a whole-
+    trip sum. So the planner must see ALL persona names, not just members."""
+    repo = InMemoryRepository()
+    recorder = RecordingPlanner(QuerySpec(operation="sum", paid_by="Bob"))
+    app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_storage] = lambda: NoopStorage()
+    app.dependency_overrides[get_fx] = lambda: FakeFx(rate=1.0)
+    app.dependency_overrides[get_ask_planner] = lambda: recorder
+    try:
+        c = TestClient(app)
+        mom = c.post("/api/personas", json={"name": "Mom"}).json()
+        bob = c.post("/api/personas", json={"name": "Bob"}).json()  # NOT a member
+        h = {"X-Persona-Id": mom["id"]}
+        trip = c.post("/api/trips", json={"name": "US"}, headers=h).json()
+        # Mom pays for something; Bob pays nothing and isn't on the trip.
+        c.post(
+            "/api/receipts",
+            data={"payload": json.dumps({"trip_id": trip["id"], "currency": "INR", "total": 218.0})},
+            files={"file": ("r.jpg", io.BytesIO(b"x"), "image/jpeg")},
+            headers=h,
+        )
+        r = c.post(
+            f"/api/trips/{trip['id']}/ask",
+            json={"question": "how much did Bob pay?"},
+            headers=h,
+        )
+        # Planner saw Bob even though he's not a member ...
+        assert "Bob" in recorder.seen_context.people
+        # ... so the answer is Bob's 0, NOT Mom's 218.
+        body = r.json()
+        assert body["value"] == 0.0
+        assert body["matched"] == []
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_summary_endpoint(client):

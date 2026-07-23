@@ -19,7 +19,9 @@ from pydantic import BaseModel, Field
 from .api_models import AskResponse, Persona, Receipt
 from .schemas import Category
 
-Operation = Literal["sum", "count", "average", "max", "min", "list", "balance"]
+Operation = Literal[
+    "sum", "count", "average", "max", "min", "list", "balance", "members", "overview"
+]
 
 _SYMBOLS = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}
 
@@ -38,6 +40,18 @@ class QuerySpec(BaseModel):
     merchant_contains: str | None = None
     date_from: date | None = None
     date_to: date | None = None
+
+
+class TripInfo(BaseModel):
+    """Metadata about the container, so the ask can answer non-financial
+    questions ("who's on this trip", "when was it", trip overview)."""
+
+    name: str
+    base_currency: str
+    member_names: list[str] = Field(default_factory=list)
+    start_date: date | None = None
+    end_date: date | None = None
+    is_personal: bool = False
 
 
 class AskPlanner(Protocol):
@@ -175,6 +189,69 @@ def _answer_balance(
     return AskResponse(**{**resp, "value": net}, answer=answer, matched=their)
 
 
+def _fmt_list(names: list[str]) -> str:
+    names = [n for n in names if n]
+    if not names:
+        return "no one"
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
+
+
+def _answer_members(
+    question: str, trip_info: TripInfo | None
+) -> AskResponse:
+    resp = dict(question=question, operation="members", value=None, currency=None)
+    if trip_info is None or trip_info.is_personal:
+        return AskResponse(
+            **resp, answer="This is your personal ledger — just you.", matched=[]
+        )
+    people = trip_info.member_names
+    return AskResponse(
+        **{**resp, "value": float(len(people))},
+        answer=(
+            f"{len(people)} {'person is' if len(people) == 1 else 'people are'} on "
+            f"{trip_info.name}: {_fmt_list(people)}."
+        ),
+        matched=[],
+    )
+
+
+def _answer_overview(
+    question: str,
+    receipts: list[Receipt],
+    base_currency: str,
+    trip_info: TripInfo | None,
+) -> AskResponse:
+    resp = dict(question=question, operation="overview", currency=base_currency)
+    total = round(sum(r.base_amount for r in receipts if r.base_amount is not None), 2)
+    n = len(receipts)
+    nc = sum(1 for r in receipts if r.base_amount is None and r.total is not None)
+
+    parts = []
+    if trip_info and not trip_info.is_personal:
+        parts.append(f"{trip_info.name}")
+        if trip_info.start_date and trip_info.end_date:
+            parts.append(f"{trip_info.start_date} to {trip_info.end_date}")
+        parts.append(f"with {_fmt_list(trip_info.member_names)}")
+    else:
+        parts.append("Your personal ledger")
+
+    body = ", ".join(parts)
+    summary = (
+        f"{body}. {n} receipt{'s' if n != 1 else ''}, "
+        f"{_money(total, base_currency)} total"
+    )
+    if nc:
+        summary += f" ({nc} not converted)"
+    summary += "."
+    return AskResponse(
+        **{**resp, "value": total}, answer=summary, matched=receipts
+    )
+
+
 def run_query(
     question: str,
     spec: QuerySpec,
@@ -182,7 +259,12 @@ def run_query(
     personas: list[Persona],
     base_currency: str,
     member_ids: list[str] | None = None,
+    trip_info: TripInfo | None = None,
 ) -> AskResponse:
+    if spec.operation == "members":
+        return _answer_members(question, trip_info)
+    if spec.operation == "overview":
+        return _answer_overview(question, receipts, base_currency, trip_info)
     if spec.operation == "balance":
         return _answer_balance(
             question, spec, receipts, personas, base_currency, member_ids
@@ -195,6 +277,19 @@ def run_query(
     resp = dict(question=question, operation=spec.operation, currency=None, value=None)
 
     if n == 0:
+        # Zero matches is a *valid, answerable* result for sum/count — e.g. a real
+        # trip member who paid for nothing paid exactly 0 — not a failure to
+        # understand. Only average/max/min/list have no meaningful zero.
+        if spec.operation == "sum":
+            return AskResponse(
+                **{**resp, "value": 0.0, "currency": base_currency},
+                answer=f"{_money(0.0, base_currency)}{desc} — nothing recorded.",
+                matched=[],
+            )
+        if spec.operation == "count":
+            return AskResponse(
+                **{**resp, "value": 0.0}, answer=f"0 receipts{desc}.", matched=[]
+            )
         return AskResponse(**resp, answer=f"No receipts found{desc}.", matched=[])
 
     if spec.operation == "count":
@@ -267,9 +362,15 @@ Rules:
     min      -> "cheapest / smallest"
     list     -> "show me / which"
     balance  -> settle-up: "how much is owed to X", "how much does X owe", "is X settled up"
+    members  -> who is on the trip: "who was involved", "who's on this trip", "who are the members"
+    overview -> trip details / metadata: "tell me about this trip", "trip summary", "when was this trip", "give me an overview"
 - For a balance question, set paid_by to the person the question is about.
 - Only set category to one of the listed categories, else leave null.
-- paid_by must be one of the listed people, else null.
+- Whenever the question is about what a specific person paid, owes, or spent
+  ("how much did Bob pay", "Bob's total"), set paid_by to that person's name if
+  it matches one of the listed people. Set it even if that person may have spent
+  nothing. Only leave paid_by null when the question is about the whole group
+  ("how much did we spend", "the total").
 - currency: an ISO code (e.g. USD, EUR) if the question is about expenses in a
   specific currency ("in dollars", "any USD expenses"), else null.
 - Resolve relative dates ("last month", "in June", "this week") to date_from/date_to

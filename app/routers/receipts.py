@@ -22,7 +22,7 @@ from ..api_models import (
     Receipt,
     ReceiptCreate,
 )
-from ..ask import AskContext, AskPlanner, planner_error_response, run_query
+from ..ask import AskContext, AskPlanner, TripInfo, planner_error_response, run_query
 from ..config import get_settings
 from ..deps import (
     current_persona,
@@ -150,11 +150,19 @@ def ask_personal(
         categories=[c.value for c in Category],
         people=[persona.name],
     )
+    trip_info = TripInfo(
+        name="My Everyday",
+        base_currency=base_currency,
+        member_names=[persona.name],
+        is_personal=True,
+    )
     try:
         spec = planner.plan(body.question, ctx)
     except Exception as exc:
         return planner_error_response(body.question, exc)
-    return run_query(body.question, spec, receipts, [persona], base_currency)
+    return run_query(
+        body.question, spec, receipts, [persona], base_currency, trip_info=trip_info
+    )
 
 
 @router.get("/{receipt_id}", response_model=Receipt)
