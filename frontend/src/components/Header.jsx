@@ -14,11 +14,14 @@ export default function Header() {
 
   return (
     <header className="app-header">
-      <Link to="/" className="brand">
+      <Link to="/" className="brand" title="Home — all your trips">
         <img src={retriever} alt="" className="brand-dog" />
         Docu<span className="dot">Retriever</span>
       </Link>
       <div className="who">
+        <Link to="/" className="btn ghost" title="Go to home">
+          Home
+        </Link>
         <Avatar persona={persona} size={32} />
         <span style={{ fontWeight: 600 }}>{persona?.name}</span>
         <button className="btn ghost" onClick={switchProfile} title="Switch profile">

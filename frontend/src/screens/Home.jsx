@@ -10,6 +10,8 @@ import CreateTripModal from '../components/CreateTripModal.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
 import TripCover from '../components/TripCover.jsx'
 import EverydayCover from '../components/EverydayCover.jsx'
+import Loader from '../components/Loader.jsx'
+import FreeTierNote from '../components/FreeTierNote.jsx'
 import { usePersona } from '../persona.jsx'
 
 function dateRange(t) {
@@ -55,6 +57,7 @@ export default function Home() {
     <>
       <Header />
       <div className="container">
+        <FreeTierNote />
         {error && <div className="banner error">Couldn't load your trips: {error}</div>}
 
         <div className="section-title">Your ledger</div>
@@ -77,7 +80,8 @@ export default function Home() {
             <span>New trip</span>
           </button>
 
-          {trips.map((t) => (
+          {!loading &&
+            trips.map((t) => (
             <Link key={t.id} to={'/trip/' + t.id} className="card">
               <div className="card-cover illustrated">
                 <TripCover trip={t} />
@@ -110,6 +114,8 @@ export default function Home() {
             </Link>
           ))}
         </div>
+
+        {loading && <Loader label="Fetching your trips…" />}
 
         {!loading && trips.length === 0 && (
           <div className="empty">

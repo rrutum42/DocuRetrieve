@@ -12,6 +12,7 @@ import ReviewCard from '../components/ReviewCard.jsx'
 import AskBox from '../components/AskBox.jsx'
 import WhoPaid from '../components/WhoPaid.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
+import Loader from '../components/Loader.jsx'
 import { usePersona } from '../persona.jsx'
 
 export default function TripView({ everyday = false }) {
@@ -97,7 +98,12 @@ export default function TripView({ everyday = false }) {
     return (
       <>
         <Header />
-        <div className="container">Loading…</div>
+        <div className="container">
+          <Link to="/" className="back">
+            ← All trips
+          </Link>
+          <Loader label={everyday ? 'Fetching your receipts…' : 'Fetching this trip…'} />
+        </div>
       </>
     )
   }

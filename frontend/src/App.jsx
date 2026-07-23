@@ -4,12 +4,13 @@ import Landing from './screens/Landing.jsx'
 import PersonaPicker from './screens/PersonaPicker.jsx'
 import Home from './screens/Home.jsx'
 import TripView from './screens/TripView.jsx'
+import Loader from './components/Loader.jsx'
 
 export default function App() {
   const { persona, loading } = usePersona()
 
   if (loading) {
-    return <div className="spinner">Loading…</div>
+    return <Loader full label="Waking DocuRetriever…" />
   }
 
   // Logged out → the public landing page at "/", the profile picker at "/start".

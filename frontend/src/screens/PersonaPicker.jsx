@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { usePersona } from '../persona.jsx'
 import Avatar, { AVATAR_PALETTE } from '../components/Avatar.jsx'
+import Loader from '../components/Loader.jsx'
 import retriever from '../../resources/retriever.png'
 
 export default function PersonaPicker() {
@@ -61,7 +62,7 @@ export default function PersonaPicker() {
         </button>
       </div>
 
-      {loading && <p style={{ marginTop: 24 }}>Loading profiles…</p>}
+      {loading && <Loader label="Fetching profiles…" />}
 
       {creating && (
         <NewProfileModal
