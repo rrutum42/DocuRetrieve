@@ -544,6 +544,46 @@ select:focus {
   font-size: 18px;
   font-weight: 700;
 }
+.validation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.v-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  line-height: 1.4;
+  border: 1px solid;
+}
+.v-issue .v-ic {
+  flex: none;
+  line-height: 1.4;
+}
+.v-issue.error {
+  background: #fdece8;
+  border-color: #f2c4b6;
+  color: #a3341a;
+}
+.v-issue.warning {
+  background: #fff6e7;
+  border-color: #f2e1b8;
+  color: #8a5a12;
+}
+.v-issue.info {
+  background: #eef2f6;
+  border-color: #d8e0e8;
+  color: #55636f;
+}
+.banner.subtle {
+  background: #eef4f0;
+  border-color: #d3e3d8;
+  color: #40614b;
+}
 .line-items {
   list-style: none;
   margin: 0;

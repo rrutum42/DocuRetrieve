@@ -21,6 +21,7 @@ from pydantic import ValidationError
 
 from .config import get_settings
 from .schemas import ExtractedReceipt, ExtractionResult
+from .validation import apply_report, validate_receipt
 
 MAX_ATTEMPTS = 2
 
@@ -149,7 +150,13 @@ def extract_receipt(
             last_error = f"validation_error: {exc.error_count()} issue(s)"
             continue
 
-        return ExtractionResult(receipt=receipt, raw=last_raw, used_fallback=False)
+        # Independently check the model's work: derive blank fields via safe
+        # algebra, flag inconsistencies for the human review step.
+        report = validate_receipt(receipt)
+        receipt = apply_report(receipt, report)
+        return ExtractionResult(
+            receipt=receipt, raw=last_raw, used_fallback=False, validation=report
+        )
 
     # Exhausted attempts — hand back a reviewable failure, don't crash the upload.
     return ExtractionResult(

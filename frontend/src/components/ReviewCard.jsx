@@ -27,6 +27,8 @@ export default function ReviewCard({
   const isUnreadable = !extraction || result?.used_fallback
 
   const low = new Set(extraction?.low_confidence_fields || [])
+  const issues = result?.validation?.issues || []
+  const derivedKeys = Object.keys(result?.validation?.derived || {})
 
   const [form, setForm] = useState(() => ({
     merchant: extraction?.merchant ?? '',
@@ -120,7 +122,29 @@ export default function ReviewCard({
                     nothing is saved until you confirm.
                   </div>
                 )}
-                {!isUnreadable && low.size > 0 && (
+                {!isUnreadable && issues.length > 0 && (
+                  <div className="validation-panel">
+                    {issues.map((iss, i) => (
+                      <div key={i} className={'v-issue ' + iss.severity}>
+                        <span className="v-ic">
+                          {iss.severity === 'error'
+                            ? '⛔'
+                            : iss.severity === 'warning'
+                            ? '⚠'
+                            : 'ℹ'}
+                        </span>
+                        <span>{iss.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!isUnreadable && derivedKeys.length > 0 && (
+                  <div className="banner subtle">
+                    We filled in {derivedKeys.join(', ')} from the other amounts —
+                    please confirm {derivedKeys.length === 1 ? 'it' : 'them'}.
+                  </div>
+                )}
+                {!isUnreadable && issues.length === 0 && low.size > 0 && (
                   <div className="banner">
                     A few fields were hard to read (flagged below). Give them a
                     quick check.

@@ -24,3 +24,11 @@ Thumbs.db
 
 # uv
 uv.lock
+
+# Extraction eval over REAL receipts — personal data (names, amounts, addresses),
+# never commit. Only the aggregate evals/RESULTS.md and the synthetic
+# labels.example.json are tracked; the images and real labels/predictions are not.
+evals/fixtures/images/*
+!evals/fixtures/images/.gitkeep
+evals/fixtures/labels.json
+evals/fixtures/predictions.json

@@ -1,0 +1,19 @@
+{
+  "_about": "SYNTHETIC example showing the labels.json format. Real labels (over your own receipt images) live in labels.json, which is gitignored because it contains personal financial data. Set a field to null when it's genuinely illegible even to a human — the scorer excludes null fields rather than guessing.",
+
+  "example_clean.jpg": {
+    "is_receipt": true, "merchant": "Corner Cafe", "purchase_date": "2026-05-01",
+    "currency": "USD", "total": 24.50, "category": "dining",
+    "note": "clean baseline receipt"
+  },
+  "example_handwritten.jpg": {
+    "is_receipt": true, "merchant": "Village Store", "purchase_date": "2026-05-02",
+    "currency": "INR", "total": null, "category": "groceries",
+    "note": "handwritten; total illegible -> null so it's excluded from scoring"
+  },
+  "example_not_a_receipt.jpg": {
+    "is_receipt": false, "merchant": null, "purchase_date": null,
+    "currency": null, "total": null, "category": null,
+    "note": "a selfie — should be rejected, not parsed"
+  }
+}

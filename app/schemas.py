@@ -82,12 +82,36 @@ class ExtractedReceipt(BaseModel):
         return v
 
 
+Severity = str  # "error" | "warning" | "info"
+
+
+class ValidationIssue(BaseModel):
+    field: str
+    severity: str
+    message: str
+
+
+class ValidationReport(BaseModel):
+    """Result of independently checking the model's output (see app.validation)."""
+
+    issues: list[ValidationIssue] = Field(default_factory=list)
+    derived: dict[str, float] = Field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        return not any(i.severity == "error" for i in self.issues)
+
+    def flagged_fields(self) -> list[str]:
+        return list(dict.fromkeys(i.field for i in self.issues))
+
+
 class ExtractionResult(BaseModel):
     """The extraction pipeline's output, wrapping the parsed receipt with metadata
-    the caller needs: the raw model text (stored for audit) and whether we had to
-    fall back after a validation failure."""
+    the caller needs: the raw model text (stored for audit), whether we had to
+    fall back after a validation failure, and the independent validation report."""
 
     receipt: ExtractedReceipt | None
     raw: str
     used_fallback: bool = False
     error: str | None = None
+    validation: ValidationReport | None = None

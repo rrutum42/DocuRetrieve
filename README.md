@@ -103,6 +103,37 @@ frontend/         React app (added Day 2)
 Multi-currency (per-trip base currency, snapshot conversion via Frankfurter) and
 delete-trip also landed along the way.
 
+### Going deep: trustworthy extraction (the hard part)
+
+The center of "messy documents → *trustworthy* structured data" is not trusting
+the model's word for it. After Gemini returns fields, an independent
+**validation layer** (`app/validation.py`) checks its work:
+
+- **Arithmetic** — does `subtotal + tax + tip = total`? Line items sum?
+- **Safe self-correction** — fills fields the model left *blank* via algebra
+  (`subtotal = total − tax`) but never overwrites a value it actually read;
+  genuine inconsistencies are flagged for the human, not silently trusted.
+- **Sanity** — future dates, unrecognized currencies, non-positive totals.
+
+Everything it finds surfaces in the review card as specific, human messages
+("Numbers don't add up: … = 100.00, but total reads 130.00").
+
+And it's **measured**, not hoped:
+
+- **Validator eval** — `python -m evals.validator_eval` scores the checks against
+  a labeled set (precision / recall / F1), gated in CI by
+  `tests/test_validator_eval.py`.
+- **Extraction eval on real receipts** — on a deliberately messy 16-image set
+  (handwritten, blurry, Marathi/Devanagari, rotated 90°, foreign currency, plus
+  4 non-receipts incl. 2 adversarial), the pipeline scored **100% (46/46) on
+  objective fields** — date, currency, total, category — and **100% precision &
+  recall on `is_receipt`** (all 4 non-receipts correctly rejected, including a
+  hospital letterhead covered in math notes and a product barcode label). Ground
+  truth was read independently; illegible fields were excluded, not guessed.
+  Full write-up with honesty caveats in [`evals/RESULTS.md`](./evals/RESULTS.md).
+
+See [`evals/README.md`](./evals/README.md) for how to run both.
+
 ## License
 
 Source-available under the **[PolyForm Noncommercial License 1.0.0](./LICENSE.md)**.

@@ -101,6 +101,35 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
 - **Real-world handling:** planner errors fall back to a "list" spec (never fail the question); unconverted receipts are excluded from sums with an explicit note; unknown payer/category yields an honest "no receipts found".
 - **Cut:** NL→SQL, LLM-does-the-math, and a "group by person" operation (the per-person "who paid" strip already answers that visually).
 
+## Depth: independently validate the model's output, and measure it
+
+- **Chose:** After the model extracts a receipt, run an independent **validation
+  layer** that (a) checks arithmetic (subtotal+tax+tip==total, line-item sums),
+  (b) **safely self-corrects** by deriving only *blank* fields via algebra, and
+  (c) flags sanity problems (future dates, unknown currency, non-positive total).
+  Then **measure** the validator with an eval harness (precision/recall on a
+  labeled set), gated in CI.
+- **Considered:** (a) trusting the model's own `low_confidence_fields` and moving
+  on — the common approach; (b) auto-repairing *all* inconsistent fields; (c) a
+  second LLM "verify" pass.
+- **Reasoning:**
+  - Trusting self-report is exactly what most receipt tools do, and it's where
+    they quietly fail — an LLM will confidently hand back numbers that don't add
+    up. Independent, deterministic checks catch what self-report misses at zero
+    marginal cost.
+  - **Derive-blank-but-never-overwrite** keeps the "model proposes, human
+    confirms" principle intact: we only fill gaps we can prove algebraically, and
+    surface real conflicts for review rather than papering over them.
+  - A second LLM pass costs tokens/latency and can hallucinate agreement; simple
+    arithmetic is exact and free.
+  - **Measuring** it (eval harness + CI gate) is the point of the depth: the
+    take-home asks us to solve the hard part *well*, and "I measured the validator
+    at 100% precision/recall on a labeled set, and it guards every commit" is
+    evidence, not a claim.
+- **Cut (for now):** full extraction-accuracy eval on real receipt images (needs
+  a hand-labeled image corpus — planned, see evals/README.md), and the second-LLM
+  verification pass.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

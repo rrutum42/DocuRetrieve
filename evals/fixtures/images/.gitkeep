@@ -1,0 +1,3 @@
+# Drop real receipt photos here (jpg/png/pdf) for the extraction-accuracy eval.
+# This folder's images are gitignored — they contain personal data and are never
+# committed. Only labels.json and the eval results leave your machine.
