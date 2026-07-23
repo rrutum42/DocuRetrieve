@@ -65,3 +65,53 @@ The takeaway: across handwritten, blurry, non-Latin-script, rotated, and
 foreign-currency receipts, the model + validation layer read every objectively
 legible field correctly — and correctly rejected every non-receipt, including
 adversarial ones.
+
+---
+
+# NL ask eval results
+
+Run: `python -m evals.ask_eval predict` then `score`.
+Model: `gemini-flash-lite-latest` (the planner) + the deterministic executor.
+
+**Question:** does a real natural-language question map to a query that returns
+the *right* answer — especially on the cases that used to be bugs?
+
+The dataset (`evals/ask_dataset.py`) is a synthetic trip ledger (Mom/Dad/Kid,
+5 receipts, one in USD) with 15 labeled questions. Because it's synthetic, the
+dataset, the planner outputs, and these results are all committed and
+reproducible.
+
+## Results
+
+| Metric | Result |
+|--------|--------|
+| operation accuracy | 15/15 (100%) |
+| **answer accuracy** | **15/15 (100%)** |
+
+Every question mapped to the right operation *and* produced the correct number —
+including the adversarial cases that motivated earlier fixes:
+
+- **"How much did Kid pay?"** (a member who paid for nothing) → **0**, not "no
+  receipts found".
+- **"How much did Stranger pay?"** (someone not on the trip) → **0**, not the
+  whole-trip total (the bug we fixed by giving the planner all persona names).
+- **"How many expenses were in USD?"** → native-currency filter, count = 1.
+- **"How much is owed to Mom?" / "How much does Kid owe?"** → settle-up balances
+  with the correct sign.
+- **"Who is on this trip?" / "Give me an overview"** → metadata operations.
+
+## Two tiers (same split as the extraction eval)
+
+- **Executor** (`run_query`) is gated in CI by `tests/test_ask_eval.py` — every
+  case's *correct* QuerySpec must produce the labeled answer, deterministically,
+  with no API calls. This guards the query engine against regressions.
+- **Planner** (Gemini) is the live half above — it measures the LLM step that
+  turns a question into that QuerySpec.
+
+## Honesty notes
+
+- **Small, synthetic set (15).** It proves the planner handles the intended
+  question shapes and the known failure modes, not that it's correct on every
+  possible phrasing. Real-world paraphrase robustness would need a larger set.
+- The executor is fully deterministic and CI-gated; only the planner step
+  depends on the model.

@@ -1,0 +1,137 @@
+{
+  "How much did we spend in total?": {
+    "operation": "sum",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much did we spend on dining?": {
+    "operation": "sum",
+    "category": "dining",
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How many receipts are there?": {
+    "operation": "count",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much did Dad pay?": {
+    "operation": "sum",
+    "category": null,
+    "paid_by": "Dad",
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much did Kid pay?": {
+    "operation": "sum",
+    "category": null,
+    "paid_by": "Kid",
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "What was the most expensive purchase?": {
+    "operation": "max",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much did we spend in June?": {
+    "operation": "sum",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": "2026-06-01",
+    "date_to": "2026-06-30"
+  },
+  "How much is owed to Mom?": {
+    "operation": "balance",
+    "category": null,
+    "paid_by": "Mom",
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much does Kid owe?": {
+    "operation": "balance",
+    "category": null,
+    "paid_by": "Kid",
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "Who is on this trip?": {
+    "operation": "members",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "Give me an overview of this trip.": {
+    "operation": "overview",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How many expenses were in USD?": {
+    "operation": "count",
+    "category": null,
+    "paid_by": null,
+    "currency": "USD",
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much did Stranger pay?": {
+    "operation": "sum",
+    "category": null,
+    "paid_by": "Stranger",
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "How much did we spend on groceries?": {
+    "operation": "sum",
+    "category": "groceries",
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  },
+  "Show me the dining receipts.": {
+    "operation": "list",
+    "category": "dining",
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null
+  }
+}

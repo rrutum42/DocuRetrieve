@@ -38,3 +38,20 @@ Drop images under `evals/fixtures/images/` and labels in `evals/fixtures/labels.
 > spending API calls or needing private receipts; the extraction eval measures
 > the *end-to-end* quality that a user actually experiences. The first guards
 > every commit; the second is the headline accuracy number.
+
+## 3. NL ask eval (synthetic, committable) — `ask_eval.py`
+
+**Question:** does a natural-language question map to a query that returns the
+right answer — including the adversarial cases (zero-expense payer, non-member,
+currency filter, settle-up)?
+
+```bash
+python -m evals.ask_eval predict   # live: question -> QuerySpec (Gemini), cached
+python -m evals.ask_eval score     # deterministic: run cached specs, score answers
+```
+
+Over a synthetic trip ledger (`ask_dataset.py`) with 15 labeled questions.
+Because it's synthetic, the dataset and results are committed and reproducible.
+The executor half is gated in CI by `tests/test_ask_eval.py`; the planner half
+is the live `predict`/`score`. Latest results: 15/15 operation and answer
+accuracy — see `RESULTS.md`.

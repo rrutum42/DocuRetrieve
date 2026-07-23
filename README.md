@@ -131,8 +131,13 @@ And it's **measured**, not hoped:
   hospital letterhead covered in math notes and a product barcode label). Ground
   truth was read independently; illegible fields were excluded, not guessed.
   Full write-up with honesty caveats in [`evals/RESULTS.md`](./evals/RESULTS.md).
+- **NL ask eval** — over a synthetic trip ledger with 15 labeled questions
+  (incl. adversarial: zero-expense payer, non-member, currency filter,
+  settle-up), the planner + executor scored **15/15 (100%) on both operation and
+  answer accuracy**. Executor gated in CI (`tests/test_ask_eval.py`); planner
+  measured live.
 
-See [`evals/README.md`](./evals/README.md) for how to run both.
+See [`evals/README.md`](./evals/README.md) for how to run them.
 
 ## License
 
