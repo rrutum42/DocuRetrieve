@@ -154,4 +154,9 @@ CASES: list[AskCase] = [
             QuerySpec(operation="unsupported"),
             "unsupported", None, matched=0,
             note="off-ledger question -> unsupported, never a made-up total"),
+    AskCase("What day is it today?",
+            QuerySpec(operation="unsupported"),
+            "unsupported", None, matched=0,
+            note="current-date question must NOT be mistaken for the trip's dates "
+                 "(overview) — regression from a real live miss"),
 ]

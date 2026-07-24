@@ -239,6 +239,20 @@ def test_breakdown_with_no_receipts_is_empty_not_crash():
     assert "No receipts" in r.answer
 
 
+def test_breakdown_answer_pluralizes_dimension_correctly():
+    # regression: "across 3 categorys"/"2 persons" -> "categories"/"people"
+    by_cat = run_query(
+        "by category", QuerySpec(operation="breakdown", group_by="category"),
+        RECEIPTS, PEOPLE, "INR",
+    )
+    assert "categories" in by_cat.answer and "categorys" not in by_cat.answer
+    by_person = run_query(
+        "by person", QuerySpec(operation="breakdown", group_by="paid_by"),
+        RECEIPTS, PEOPLE, "INR",
+    )
+    assert "people" in by_person.answer and "persons" not in by_person.answer
+
+
 def test_breakdown_rows_carry_percent_share():
     r = run_query(
         "spend by category",

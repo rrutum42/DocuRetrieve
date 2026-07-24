@@ -337,15 +337,21 @@ def _answer_breakdown(
     rows.sort(key=lambda row: (-row.value, row.label))
 
     total = round(sum(row.value for row in rows), 2)
-    dim = {"paid_by": "person", "category": "category", "currency": "currency",
-           "merchant": "merchant"}[group_by]
+    # (singular, plural) per dimension — irregular plurals ("people", "categories")
+    # so the sentence reads naturally regardless of how many groups there are.
+    singular, plural = {
+        "paid_by": ("person", "people"),
+        "category": ("category", "categories"),
+        "currency": ("currency", "currencies"),
+        "merchant": ("merchant", "merchants"),
+    }[group_by]
+    dim = singular if len(rows) == 1 else plural
     top = rows[0]
     # Naming the top group's share turns "what percent did Dad cover?" /
     # "what fraction was food?" into a directly answerable breakdown.
     pct = f" ({top.share:.0f}%)" if grand else ""
     answer = (
-        f"{_money(total, base_currency)}{desc} across {len(rows)} "
-        f"{dim if len(rows) == 1 else dim + 's'} — "
+        f"{_money(total, base_currency)}{desc} across {len(rows)} {dim} — "
         f"{top.label} highest at {_money(top.value, base_currency)}{pct}."
     )
     return AskResponse(
@@ -608,7 +614,9 @@ Rules:
                 "our smallest purchases". Set sort and limit (see below).
     balance  -> settle-up: "how much is owed to X", "how much does X owe", "is X settled up"
     members  -> who is on the trip: "who was involved", "who's on this trip", "who are the members"
-    overview -> trip details / metadata: "tell me about this trip", "trip summary", "when was this trip", "give me an overview"
+    overview -> details of THIS TRIP: "tell me about this trip", "trip summary",
+                "when was THIS TRIP", "give me an overview". NOT the current
+                date/time — "what day is it today" is unsupported, not overview.
     breakdown-> split a total across a dimension: "how much did EACH person spend",
                 "spending BY category", "break it down by merchant", "per-person totals",
                 "which category costs the most", "what PERCENT/FRACTION did X cover".
@@ -618,9 +626,12 @@ Rules:
                 spend more on dining OR fuel?", "who spent more, Mom or Dad?",
                 "how much MORE did Mom pay than Dad?". Set group_by to the
                 dimension and compare_subjects to the named things (see below).
-    unsupported-> the question is NOT about this ledger's receipts/spending
-                (weather, advice, the future, general chit-chat). Do not force a
-                number onto it.
+    unsupported-> the question is NOT about this ledger's receipts/spending:
+                weather, advice, opinions, the future, general chit-chat, math,
+                trivia, or the CURRENT date/day/time ("what day is it today",
+                "what's the date"). When in doubt, if the question can't be
+                answered from the trip's receipts, choose unsupported — do NOT
+                force a number or a trip summary onto it.
 - For a "what PERCENT / SHARE / FRACTION did X ..." question, use breakdown over
   the WHOLE dimension and do NOT also set the matching filter to X — the split
   already contains X's row and its share, and filtering to X would drop the
@@ -670,6 +681,7 @@ Examples (question -> spec):
 - "how much did Dad spend?" -> {{"operation": "sum", "paid_by": "Dad"}}
 - "show me the fuel receipts" -> {{"operation": "list", "category": "fuel"}}
 - "what's the weather in Goa?" -> {{"operation": "unsupported"}}
+- "what day is it today?" -> {{"operation": "unsupported"}}
 
 Return ONLY the JSON."""
 
