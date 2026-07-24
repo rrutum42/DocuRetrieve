@@ -5,6 +5,31 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
 
 ---
 
+## Why this problem (motivation)
+
+- **Personal resonance, not a random pick.** I'm about to go on a family trip, and
+  splitting and tracking group expenses is a problem I actually live — messy
+  receipts, "who paid for what", "what did this cost us at home". I chose this
+  topic because I wanted to build something I'd genuinely use, so the design
+  decisions came from real friction rather than a spec on paper.
+- **What I chose to go deep on, in priority order:**
+  1. **Parsing receipts** — the hard, messy core: bad photos, handwriting,
+     foreign currency, non-receipts. This is where I spent the most effort and
+     where I built independent validation + a measured eval.
+  2. **UX around the user journey** — trip-first organization, personas, review-
+     before-save, traceable answers, graceful failures. The product should feel
+     like a real tool, not a demo.
+  3. **Running everything free of cost** — the entire system ($0 host, free DB,
+     Gemini free tier) so it can live on unattended without a bill. This
+     constraint shaped the stack throughout.
+- **Honest about where it's weakest — the NL queries.** The natural-language ask
+  is the piece that **still needs a lot of work**. The eval passes on the intended
+  question shapes (25/25 on a small synthetic set), but that's not the same as
+  robustness: real-world phrasing variety, multi-currency nuance, cross-trip
+  questions, and a larger labeled set are all still open. I'm treating the current
+  state as a solid, honestly-measured foundation — not a finished feature. See
+  "Ask, part 2" below and the honesty notes in `evals/RESULTS.md`.
+
 ## Problem choice: #3 (messy docs → structured data), framed as a family receipt ledger
 
 - **Chose:** Problem 3, interpreted as a receipt ledger with per-trip roll-ups and natural-language query.
