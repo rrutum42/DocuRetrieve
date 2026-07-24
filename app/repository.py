@@ -258,6 +258,19 @@ class InMemoryRepository:
 # Supabase implementation (live)
 # --------------------------------------------------------------------------- #
 
+def _is_uuid(value: str) -> bool:
+    """True if `value` is a well-formed UUID. Client-supplied ids (persona
+    header, trip/receipt path params) hit `uuid` columns in Postgres, which
+    *raises* on a malformed string ("invalid input syntax for type uuid") — a
+    500. A malformed id can never match a real row, so we treat it as "not
+    found" and let the normal 404/401 path handle it. Never leak existence."""
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 class SupabaseRepository:
     """Postgres-backed via Supabase's REST client.
 
@@ -420,6 +433,8 @@ class SupabaseRepository:
         return self._assemble(rows)
 
     def get_receipt(self, receipt_id: str, persona_id: str) -> Receipt:
+        if not _is_uuid(receipt_id):
+            raise NotFound(receipt_id)
         rows = self._db.table("receipts").select("*").eq("id", receipt_id).execute().data
         if not rows:
             raise NotFound(receipt_id)
@@ -462,6 +477,8 @@ class SupabaseRepository:
         return Persona(**row)
 
     def get_persona(self, persona_id: str) -> Persona | None:
+        if not _is_uuid(persona_id):
+            return None
         rows = (
             self._db.table("personas").select("*").eq("id", persona_id).execute().data
         )
@@ -550,6 +567,8 @@ class SupabaseRepository:
         return Trip(**row, member_ids=members)
 
     def get_trip_for_persona(self, trip_id: str, persona_id: str) -> Trip:
+        if not _is_uuid(trip_id):
+            raise NotFound(trip_id)
         rows = self._db.table("trips").select("*").eq("id", trip_id).execute().data
         if not rows:
             raise NotFound(trip_id)

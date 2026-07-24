@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.repository import Forbidden, InMemoryRepository, NotFound
+from app.repository import Forbidden, InMemoryRepository, NotFound, SupabaseRepository
 
 
 @pytest.fixture
@@ -41,6 +41,47 @@ def test_creator_is_always_a_member(repo, people):
         cover_image=None, member_ids=[],
     )
     assert mom.id in trip.member_ids
+
+
+# --- malformed ids must be "not found", never a 500 -------------------------
+# Regression: a non-UUID id (e.g. a spoofed/garbage X-Persona-Id or trip path
+# param) reaches a Postgres `uuid` column, which raises "invalid input syntax"
+# -> an unhandled 500. The guard must resolve these to None / NotFound WITHOUT
+# ever querying the DB. A fake client that explodes on use proves the short-circuit.
+
+class _ExplodingClient:
+    """Any DB access is a test failure — the guard must return before this."""
+
+    def table(self, *_a, **_k):  # pragma: no cover - must never be called
+        raise AssertionError("DB was queried for a malformed id")
+
+
+@pytest.fixture
+def supa():
+    return SupabaseRepository(_ExplodingClient())
+
+
+@pytest.mark.parametrize("bad_id", ["not-a-real-id", "", "'; DROP TABLE personas;--", "123"])
+def test_supabase_malformed_persona_id_is_none_not_500(supa, bad_id):
+    assert supa.get_persona(bad_id) is None  # -> current_persona raises 401, not 500
+
+
+@pytest.mark.parametrize("bad_id", ["not-a-real-id", "abc", "0 OR 1=1"])
+def test_supabase_malformed_trip_id_is_notfound_not_500(supa, bad_id):
+    with pytest.raises(NotFound):
+        supa.get_trip_for_persona(bad_id, "some-persona")
+
+
+def test_supabase_malformed_receipt_id_is_notfound_not_500(supa):
+    with pytest.raises(NotFound):
+        supa.get_receipt("not-a-uuid", "some-persona")
+
+
+def test_supabase_valid_uuid_does_reach_the_db(supa):
+    # A well-formed UUID must pass the guard and actually hit the DB (which here
+    # explodes) — proving the guard rejects only malformed ids, not real lookups.
+    with pytest.raises(AssertionError, match="DB was queried"):
+        supa.get_persona("123e4567-e89b-12d3-a456-426614174000")
 
 
 def test_shared_member_sees_trip_but_stranger_does_not(repo, people):
