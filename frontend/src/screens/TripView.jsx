@@ -187,7 +187,12 @@ export default function TripView({ everyday = false }) {
 
         {receipts.length > 0 && (
           <AskBox
-            ask={everyday ? api.askPersonal : (q) => api.askTrip(trip.id, q)}
+            storageKey={everyday ? 'ask.personal' : `ask.trip.${trip.id}`}
+            ask={
+              everyday
+                ? (q, h) => api.askPersonal(q, h)
+                : (q, h) => api.askTrip(trip.id, q, h)
+            }
             onResult={setAskResult}
             examples={
               everyday

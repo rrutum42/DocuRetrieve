@@ -25,6 +25,7 @@ from ..api_models import (
 )
 from ..ask import AskContext, AskPlanner, TripInfo, planner_error_response, run_query
 from ..config import get_settings
+from ..dedupe import duplicate_of
 from ..deps import (
     current_persona,
     get_ask_planner,
@@ -125,6 +126,24 @@ async def create_receipt(
             raise HTTPException(
                 status_code=400, detail="paid_by must be a member of the trip."
             )
+
+        # Reject an exact duplicate already in this trip (double-tap, or two people
+        # uploading the same shared bill) — it would silently double-count spend and
+        # every settle-up balance. `allow_duplicate` is the human's override for a
+        # genuine repeat purchase. Server-side so a direct POST can't bypass it.
+        if not data.allow_duplicate:
+            dup = duplicate_of(data, repo.list_trip_receipts(data.trip_id, persona.id))
+            if dup is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"This looks like a duplicate of a receipt already in this "
+                        f"trip ({dup.merchant} on {dup.purchase_date}, "
+                        f"{dup.total} {dup.currency}). If it's a separate purchase, "
+                        f"save again to confirm."
+                    ),
+                )
+
         base_currency = trip.base_currency
     else:
         base_currency = get_settings().default_base_currency
@@ -184,6 +203,7 @@ def ask_personal(
         base_currency=base_currency,
         categories=[c.value for c in Category],
         people=[persona.name],
+        history=body.history,
     )
     trip_info = TripInfo(
         name="My Everyday",

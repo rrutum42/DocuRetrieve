@@ -14,8 +14,8 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api_models import Persona, Receipt
-from app.ask import AskPlanner, QuerySpec, TripInfo, run_query
+from app.api_models import AskTurn, Persona, Receipt
+from app.ask import AskContext, AskPlanner, QuerySpec, TripInfo, build_planner_prompt, run_query
 from app.deps import get_ask_planner, get_fx, get_repository, get_storage
 from app.main import app
 from app.repository import InMemoryRepository
@@ -608,6 +608,77 @@ def test_ask_exposes_non_members_to_planner():
         body = r.json()
         assert body["value"] == 0.0
         assert body["matched"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+# --- conversation history (follow-up context for the planner) ---------------
+
+def _ctx(history=None):
+    return AskContext(
+        today=date(2026, 7, 20),
+        base_currency="INR",
+        categories=["dining", "fuel"],
+        people=["Mom", "Dad"],
+        history=history or [],
+    )
+
+
+# the rendered history block starts with this header (the prompt's static rule
+# also mentions "Recent conversation", so assert on the header, not that phrase).
+_HIST_HEADER = "oldest first — use only to resolve"
+
+
+def test_prompt_omits_history_block_when_empty():
+    prompt = build_planner_prompt(_ctx())
+    assert _HIST_HEADER not in prompt
+
+
+def test_prompt_includes_recent_turns():
+    hist = [
+        AskTurn(question="how much did Dad pay?", answer="Dad paid 350."),
+        AskTurn(question="and on dining?", answer="150 on dining, paid by Dad."),
+    ]
+    prompt = build_planner_prompt(_ctx(hist))
+    assert _HIST_HEADER in prompt
+    assert "how much did Dad pay?" in prompt
+    assert "and on dining?" in prompt
+
+
+def test_prompt_history_is_bounded_to_recent_turns():
+    hist = [AskTurn(question=f"q{i}", answer=f"a{i}") for i in range(10)]
+    prompt = build_planner_prompt(_ctx(hist))
+    # only the last 6 turns are rendered; the oldest are dropped
+    assert "q0" not in prompt and "q3" not in prompt
+    assert "q4" in prompt and "q9" in prompt
+
+
+def test_ask_endpoint_forwards_history_to_planner():
+    """A follow-up question must reach the planner WITH the prior turns, else
+    'and on dining?' can't be resolved. The executor never sees history."""
+    repo = InMemoryRepository()
+    recorder = RecordingPlanner(QuerySpec(operation="sum", category="dining"))
+    app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_storage] = lambda: NoopStorage()
+    app.dependency_overrides[get_fx] = lambda: FakeFx(rate=1.0)
+    app.dependency_overrides[get_ask_planner] = lambda: recorder
+    try:
+        c = TestClient(app)
+        mom = c.post("/api/personas", json={"name": "Mom"}).json()
+        h = {"X-Persona-Id": mom["id"]}
+        trip = c.post("/api/trips", json={"name": "Goa"}, headers=h).json()
+        c.post(
+            f"/api/trips/{trip['id']}/ask",
+            json={
+                "question": "and on dining?",
+                "history": [
+                    {"question": "how much did we spend?", "answer": "800 total."}
+                ],
+            },
+            headers=h,
+        )
+        assert len(recorder.seen_context.history) == 1
+        assert recorder.seen_context.history[0].question == "how much did we spend?"
     finally:
         app.dependency_overrides.clear()
 

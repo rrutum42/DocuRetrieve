@@ -44,6 +44,9 @@ export default function ReviewCard({
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // Set when the server flags this as a duplicate (409). We then let the user
+  // confirm it really is a separate purchase and retry with allow_duplicate.
+  const [isDuplicate, setIsDuplicate] = useState(false)
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -54,7 +57,7 @@ export default function ReviewCard({
   const totalNum = num(form.total)
   const canSave = totalNum !== null && totalNum > 0
 
-  async function save() {
+  async function save(allowDuplicate = false) {
     setSaving(true)
     setError(null)
     try {
@@ -73,10 +76,14 @@ export default function ReviewCard({
         line_items: extraction?.line_items || [],
         low_confidence_fields: extraction?.low_confidence_fields || [],
         raw_extraction: extraction || null,
+        allow_duplicate: allowDuplicate,
       }
       const saved = await onSaved(payload, file)
       return saved
     } catch (e) {
+      // 409 -> the server thinks this duplicates a receipt already in the trip.
+      // Offer an explicit "save anyway" instead of a dead end.
+      if (e.status === 409) setIsDuplicate(true)
       setError(e.message)
       setSaving(false)
     }
@@ -261,13 +268,23 @@ export default function ReviewCard({
                   <button className="btn ghost" onClick={onClose} disabled={saving}>
                     {canSave ? 'Cancel' : 'Discard'}
                   </button>
-                  <button
-                    className="btn primary"
-                    onClick={save}
-                    disabled={saving || !canSave}
-                  >
-                    {saving ? 'Saving…' : 'Confirm & save'}
-                  </button>
+                  {isDuplicate ? (
+                    <button
+                      className="btn primary"
+                      onClick={() => save(true)}
+                      disabled={saving || !canSave}
+                    >
+                      {saving ? 'Saving…' : 'Save anyway'}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn primary"
+                      onClick={() => save(false)}
+                      disabled={saving || !canSave}
+                    >
+                      {saving ? 'Saving…' : 'Confirm & save'}
+                    </button>
+                  )}
                 </div>
               </>
             )}

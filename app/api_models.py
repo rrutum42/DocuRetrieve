@@ -90,6 +90,9 @@ class ReceiptCreate(BaseModel):
     line_items: list[ReceiptLineItem] = Field(default_factory=list)
     low_confidence_fields: list[str] = Field(default_factory=list)
     raw_extraction: dict | None = None
+    # Set true to save even when this exactly matches a receipt already in the
+    # trip — the human's explicit "yes, it really is a separate purchase".
+    allow_duplicate: bool = False
 
 
 class Receipt(BaseModel):
@@ -149,8 +152,19 @@ class LedgerSummary(BaseModel):
     per_person: list[PersonPaid] = Field(default_factory=list)
 
 
+class AskTurn(BaseModel):
+    """One prior exchange, sent back by the client so the planner can resolve a
+    follow-up ("and on dining?", "what about Bob?") into a complete query."""
+
+    question: str = Field(min_length=1, max_length=500)
+    answer: str = Field(min_length=1, max_length=1000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+    # Recent conversation, oldest first. Bounded so a follow-up has context
+    # without unbounded prompt growth; the executor never sees it (planner only).
+    history: list[AskTurn] = Field(default_factory=list, max_length=12)
 
 
 class BreakdownRow(BaseModel):

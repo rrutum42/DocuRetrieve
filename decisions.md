@@ -301,6 +301,65 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
 - **Still cut:** multi-dimension grouping (person × category at once) and
   arithmetic across more than two compare subjects beyond a simple ranking.
 
+## Duplicate receipts: reject an exact match in a trip, with a human override
+
+- **Problem:** the same receipt lands in a trip twice — someone taps save twice,
+  or two people photograph the same shared dinner bill. That silently
+  double-counts the trip's spend and every settle-up balance derived from it,
+  and nothing else catches it (the `total > 0` gate and the completeness signal
+  both pass — it's a real receipt, just entered twice).
+- **Chose:** reject a save that *exactly* matches a receipt already in the trip on
+  the four fields that identify a transaction — **merchant + purchase_date +
+  total + currency** — with an HTTP **409** and an actionable message. Enforced
+  **server-side** (a direct POST can't bypass it), scoped **per-trip** (the same
+  bill in a different trip is legitimate), and skipped for the personal ledger.
+  The match logic is a pure function (`app/dedupe.py`), unit-tested independently.
+- **Human override (`allow_duplicate`):** the match is deliberately strict, but a
+  genuine repeat purchase (same shop, same day, same price) can happen. Rather
+  than a dead end, the review card catches the 409 and offers **"Save anyway"**,
+  which resubmits with `allow_duplicate=true`. Keeps the invariant "the model
+  proposes, a human confirms" and "degrade gracefully, never block the action".
+- **Why strict/exact, not fuzzy:** a looser match (e.g. merchant + date only, or
+  a fuzzy amount) would block distinct purchases — two coffees at the same café,
+  or a second fuel stop — which is worse than the occasional missed near-dup.
+  Exact-on-four-fields is a high-precision "same receipt twice" signal; the
+  override covers the rare true repeat. A missing key field (no merchant/date/
+  total/currency) is never treated as a duplicate — we don't block on weak data.
+- **Cut:** fuzzy/near-duplicate detection (image hashing, amount tolerance,
+  same-merchant-same-day heuristics) and dedup across the personal ledger — the
+  request was per-trip, and exact-match + override covers the real mistake
+  without false positives.
+
+## Ask, part 3: a conversation, not one-shot questions (context-carry)
+
+- **Want:** let people explore — "how much did Bob pay?" → "and on dining?" →
+  "what about groceries?" — instead of re-typing the full question each time.
+- **Tension:** the whole ask design's strength is that each question compiles to a
+  *stateless, validated `QuerySpec`* a deterministic executor runs (injection-
+  proof, exact, traceable). A stateful conversational agent would trade all of
+  that away.
+- **Chose (context-carry planner):** keep the executor and the QuerySpec exactly
+  as-is. Only the *planner* becomes context-aware — the client sends the recent
+  turns (`history: [{question, answer}]`) with each question, and the planner
+  resolves a follow-up fragment into a COMPLETE spec: inherit the still-relevant
+  filters from the previous question, apply the change. A self-contained question
+  ignores the history. Verified live: "and on dining?" kept `paid_by=Bob` and
+  added `category=dining`; "what about groceries?" kept Bob and swapped the
+  category. No shared mutable state; every answer is still a fresh, exact run.
+- **History lives in the session, not the DB:** the thread is React state +
+  `sessionStorage`, keyed per container (`ask.trip.<id>` / `ask.personal`), so it
+  survives navigation within a visit, never leaks one trip's conversation into
+  another, and adds no schema/migration or privacy surface. Server-side the
+  `history` list is length-capped (12) and each turn's strings are bounded, and
+  the planner only renders the last 6 turns — so a long thread can't blow up the
+  prompt (or the free-tier token budget).
+- **Testable seam kept:** prompt assembly is a pure `build_planner_prompt(context)`
+  so the history rendering (present/absent, bounded) is unit-tested without
+  Gemini; an endpoint test asserts the turns actually reach the planner.
+- **Cut:** a full conversational agent (state + tool-chaining) and DB-persisted,
+  cross-member chat threads — both give up guarantees or add surface for a
+  feature the context-carry approach already delivers.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

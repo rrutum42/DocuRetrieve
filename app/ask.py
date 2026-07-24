@@ -16,7 +16,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
-from .api_models import AskResponse, BreakdownRow, Persona, Receipt
+from .api_models import AskResponse, AskTurn, BreakdownRow, Persona, Receipt
 from .schemas import Category
 
 Operation = Literal[
@@ -89,6 +89,9 @@ class AskContext(BaseModel):
     base_currency: str
     categories: list[str]
     people: list[str]
+    # Recent Q&A turns (oldest first) so the planner can resolve a follow-up
+    # against the prior question. Empty for a fresh, single-shot question.
+    history: list[AskTurn] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
@@ -665,6 +668,12 @@ Rules:
 - Resolve relative dates ("last month", "in June", "this week") to date_from/date_to
   using today's date. Leave both null if no time filter.
 - merchant_contains: a store/vendor name if the question names one, else null.
+- FOLLOW-UPS: if a "Recent conversation" block is shown below and the CURRENT
+  question is a fragment that refers back to it ("and on dining?", "what about
+  Bob?", "just in June", "by category instead", "only USD ones"), resolve it into
+  a COMPLETE spec: start from the most recent question's filters, keep the ones
+  still relevant, and apply the change the new question asks for. If the current
+  question stands on its own, ignore the conversation entirely.
 
 Examples (question -> spec):
 - "how much did we spend?" -> {{"operation": "sum"}}
@@ -686,6 +695,31 @@ Examples (question -> spec):
 Return ONLY the JSON."""
 
 
+def _history_block(history: list[AskTurn], limit: int = 6) -> str:
+    """Render the most recent turns for the planner. Bounded to the last few so
+    a long thread doesn't blow up the prompt; oldest-first for natural reading."""
+    if not history:
+        return ""
+    recent = history[-limit:]
+    lines = "\n".join(f"Q: {t.question}\nA: {t.answer}" for t in recent)
+    return (
+        "\n\nRecent conversation (oldest first — use only to resolve a follow-up):"
+        f"\n{lines}"
+    )
+
+
+def build_planner_prompt(context: AskContext) -> str:
+    """The full system prompt for a plan() call, including any conversation
+    history. Pulled out as a pure function so it's testable without Gemini."""
+    prompt = PLANNER_PROMPT.format(
+        today=context.today.isoformat(),
+        base_currency=context.base_currency,
+        categories=", ".join(context.categories),
+        people=", ".join(context.people) or "(none)",
+    )
+    return prompt + _history_block(context.history)
+
+
 class GeminiPlanner:
     """Live planner using Gemini structured output."""
 
@@ -698,15 +732,10 @@ class GeminiPlanner:
         settings = get_settings()
         client = genai.Client(api_key=settings.gemini_api_key)
         model = settings.gemini_ask_model or settings.gemini_model
-        prompt = PLANNER_PROMPT.format(
-            today=context.today.isoformat(),
-            base_currency=context.base_currency,
-            categories=", ".join(context.categories),
-            people=", ".join(context.people) or "(none)",
-        )
+        prompt = build_planner_prompt(context)
         resp = client.models.generate_content(
             model=model,
-            contents=[prompt, f"Question: {question}"],
+            contents=[prompt, f"Current question: {question}"],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=QuerySpec,

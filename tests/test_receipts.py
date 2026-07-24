@@ -98,6 +98,78 @@ def test_save_and_list_receipt_in_trip(client):
     assert [x["id"] for x in listed] == [saved["id"]]
 
 
+def _dup_payload(trip_id, **over):
+    base = {
+        "trip_id": trip_id,
+        "merchant": "Bistro",
+        "purchase_date": "2026-06-05",
+        "currency": "INR",
+        "total": 100.0,
+        "category": "dining",
+    }
+    base.update(over)
+    return base
+
+
+def test_duplicate_receipt_in_trip_is_rejected(client):
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip = client.post("/api/trips", json={"name": "Goa"}, headers=h).json()
+
+    first = _save_receipt(client, mom["id"], _dup_payload(trip["id"]))
+    assert first.status_code == 201, first.text
+
+    dup = _save_receipt(client, mom["id"], _dup_payload(trip["id"]))
+    assert dup.status_code == 409, dup.text
+    assert "duplicate" in dup.json()["detail"].lower()
+
+    # the duplicate was NOT persisted — still one receipt in the trip
+    listed = client.get(f"/api/trips/{trip['id']}/receipts", headers=h).json()
+    assert len(listed) == 1
+
+
+def test_allow_duplicate_override_saves(client):
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip = client.post("/api/trips", json={"name": "Goa"}, headers=h).json()
+
+    assert _save_receipt(client, mom["id"], _dup_payload(trip["id"])).status_code == 201
+    # a genuine repeat purchase: same fields, but the human confirms with the flag
+    ok = _save_receipt(client, mom["id"], _dup_payload(trip["id"], allow_duplicate=True))
+    assert ok.status_code == 201, ok.text
+    assert len(client.get(f"/api/trips/{trip['id']}/receipts", headers=h).json()) == 2
+
+
+def test_non_duplicate_receipt_still_saves(client):
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip = client.post("/api/trips", json={"name": "Goa"}, headers=h).json()
+
+    assert _save_receipt(client, mom["id"], _dup_payload(trip["id"])).status_code == 201
+    # different amount -> a distinct purchase, must save
+    other = _save_receipt(client, mom["id"], _dup_payload(trip["id"], total=250.0))
+    assert other.status_code == 201, other.text
+    assert len(client.get(f"/api/trips/{trip['id']}/receipts", headers=h).json()) == 2
+
+
+def test_same_receipt_in_a_different_trip_is_allowed(client):
+    mom = _persona(client, "Mom")
+    h = {"X-Persona-Id": mom["id"]}
+    trip_a = client.post("/api/trips", json={"name": "A"}, headers=h).json()
+    trip_b = client.post("/api/trips", json={"name": "B"}, headers=h).json()
+
+    assert _save_receipt(client, mom["id"], _dup_payload(trip_a["id"])).status_code == 201
+    # same fields, different trip -> not a duplicate (dedup is per-trip)
+    assert _save_receipt(client, mom["id"], _dup_payload(trip_b["id"])).status_code == 201
+
+
+def test_duplicate_check_skipped_for_personal_ledger(client):
+    mom = _persona(client, "Mom")
+    p1 = _save_receipt(client, mom["id"], _dup_payload(None))
+    p2 = _save_receipt(client, mom["id"], _dup_payload(None))
+    assert p1.status_code == 201 and p2.status_code == 201  # no trip -> no dedup gate
+
+
 def test_receipt_converts_to_trip_base_currency(client):
     mom = _persona(client, "Mom")
     h = {"X-Persona-Id": mom["id"]}

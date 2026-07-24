@@ -108,6 +108,7 @@ def ask_trip(
         base_currency=trip.base_currency,
         categories=[c.value for c in Category],
         people=[p.name for p in personas],
+        history=body.history,
     )
     by_id = {p.id: p for p in personas}
     trip_info = TripInfo(

@@ -1022,6 +1022,50 @@ select:focus {
   font-size: 13px;
 }
 
+/* --- ask conversation thread ------------------------------------------- */
+.ask-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 420px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  padding-right: 4px;
+}
+.ask-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ask-question {
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 14px 14px 4px 14px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.ask-turn .ask-answer {
+  margin-top: 0; /* the question already provides the gap in a thread */
+}
+.ask-evidence {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ask-evidence:hover {
+  opacity: 0.8;
+}
+
 .ask-breakdown {
   list-style: none;
   margin: 12px 0 4px;

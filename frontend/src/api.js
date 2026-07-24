@@ -75,16 +75,17 @@ export const api = {
     }),
   resolveDispute: (id) => req('/receipts/' + id + '/dispute', { method: 'DELETE' }),
 
-  // Summaries & natural-language ask
-  askTrip: (tripId, question) =>
+  // Summaries & natural-language ask. `history` is recent [{question, answer}]
+  // turns so the planner can resolve a follow-up ("and on dining?").
+  askTrip: (tripId, question, history = []) =>
     req('/trips/' + tripId + '/ask', {
       method: 'POST',
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
     }),
-  askPersonal: (question) =>
+  askPersonal: (question, history = []) =>
     req('/receipts/personal/ask', {
       method: 'POST',
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
     }),
 }
 
