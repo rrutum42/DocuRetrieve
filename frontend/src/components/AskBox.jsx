@@ -1,12 +1,14 @@
-// Natural-language ask, as a conversation. Each question and its answer stay on
-// screen as a thread, and the recent turns are sent back with the next question
-// so the planner can resolve a follow-up ("and on dining?"). The thread lives in
-// sessionStorage (per container), so it survives navigation within a visit but
-// isn't persisted server-side. Every answer still links to the receipts behind
-// it via onResult, so numbers stay traceable.
+// Natural-language ask, as a collapsible chat bubble. A launcher in the corner
+// opens a floating panel that holds the conversation; each question and its
+// answer stay on screen, and recent turns ride back with the next question so
+// the planner can resolve a follow-up ("and on dining?"). The thread lives in
+// sessionStorage (per container) so it survives navigation within a visit but
+// isn't persisted server-side. Every answer still filters the ledger to the
+// receipts behind it (onResult), so numbers stay traceable.
 
 import { useEffect, useRef, useState } from 'react'
 import { money } from '../format'
+import retriever from '../../resources/retriever.png'
 
 // How many recent turns to send as context. Bounded to keep the prompt small
 // (the server also caps history length defensively).
@@ -21,7 +23,7 @@ function loadThread(storageKey) {
   }
 }
 
-function AnswerCard({ result, onSelect }) {
+function AnswerCard({ result }) {
   const matched = result.matched?.length || 0
   return (
     <div className="ask-answer">
@@ -42,34 +44,30 @@ function AnswerCard({ result, onSelect }) {
           ))}
         </ul>
       )}
-      <div className="ask-answer-foot">
-        {matched > 0 ? (
-          <button className="ask-evidence" onClick={() => onSelect(result)}>
-            Show the {matched} receipt{matched === 1 ? '' : 's'} behind this
-          </button>
-        ) : (
-          <span>No matching receipts</span>
-        )}
-      </div>
+      {matched > 0 && (
+        <div className="ask-answer-foot">
+          {matched} receipt{matched === 1 ? '' : 's'} behind this
+        </div>
+      )}
     </div>
   )
 }
 
-export default function AskBox({ ask, onResult, examples = [], storageKey }) {
+export default function AskBox({ ask, examples = [], storageKey }) {
+  const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   // The conversation: [{ question, result }], oldest first.
   const [turns, setTurns] = useState(() => loadThread(storageKey))
   const threadRef = useRef(null)
+  const inputRef = useRef(null)
 
   // Reload the thread when the container changes (switching trips), and never
   // leak one container's conversation into another.
   useEffect(() => {
     setTurns(loadThread(storageKey))
     setError(null)
-    onResult?.(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey])
 
   // Persist after every change so a reload within the session keeps the thread.
@@ -80,9 +78,14 @@ export default function AskBox({ ask, onResult, examples = [], storageKey }) {
     } catch {
       /* storage full / unavailable — the in-memory thread still works */
     }
-    // keep the latest turn in view
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight
   }, [turns, storageKey])
+
+  // Keep the latest turn in view and focus the input when the panel opens.
+  useEffect(() => {
+    if (!open) return
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight
+    inputRef.current?.focus()
+  }, [open, turns])
 
   async function run(question) {
     const text = (question ?? q).trim()
@@ -96,7 +99,6 @@ export default function AskBox({ ask, onResult, examples = [], storageKey }) {
       const res = await ask(text, history)
       setTurns((prev) => [...prev, { question: text, result: res }])
       setQ('')
-      onResult?.(res)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -109,71 +111,108 @@ export default function AskBox({ ask, onResult, examples = [], storageKey }) {
     setQ('')
     setError(null)
     if (storageKey) sessionStorage.removeItem(storageKey)
-    onResult?.(null)
   }
 
   return (
-    <div className="askbox">
-      {turns.length > 0 && (
-        <div className="ask-thread" ref={threadRef}>
-          {turns.map((t, i) => (
-            <div key={i} className="ask-turn">
-              <div className="ask-question">{t.question}</div>
-              <AnswerCard result={t.result} onSelect={onResult} />
+    <div className="askwidget">
+      {open && (
+        <div className="ask-panel" role="dialog" aria-label="Ask about your spending">
+          <div className="ask-panel-head">
+            <span className="ask-panel-title">
+              <span className="ask-spark">✦</span> Ask about your spending
+            </span>
+            <div className="ask-panel-actions">
+              {turns.length > 0 && (
+                <button className="ask-panel-clear" onClick={clear} disabled={busy}>
+                  Clear
+                </button>
+              )}
+              <button
+                className="ask-panel-close"
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
 
-      <form
-        className="ask-form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          run()
-        }}
-      >
-        <span className="ask-spark">✦</span>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={
-            turns.length > 0 ? 'Ask a follow-up…' : 'Ask about your spending…'
-          }
-          aria-label="Ask about your spending"
-        />
-        <button type="submit" className="btn primary" disabled={busy || !q.trim()}>
-          {busy ? 'Thinking…' : 'Ask'}
-        </button>
-        {turns.length > 0 && (
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={clear}
-            disabled={busy}
+          <div className="ask-thread" ref={threadRef}>
+            {turns.length === 0 ? (
+              <div className="ask-empty">
+                <p>Ask anything about this ledger — totals, who paid, by category, settle-up. Follow-ups work too.</p>
+                {examples.length > 0 && (
+                  <div className="ask-examples">
+                    {examples.map((ex) => (
+                      <button
+                        key={ex}
+                        className="ask-chip"
+                        onClick={() => {
+                          setQ(ex)
+                          run(ex)
+                        }}
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              turns.map((t, i) => (
+                <div key={i} className="ask-turn">
+                  <div className="ask-question">{t.question}</div>
+                  <AnswerCard result={t.result} />
+                </div>
+              ))
+            )}
+            {busy && <div className="ask-typing">Thinking…</div>}
+            {error && <div className="banner error">{error}</div>}
+          </div>
+
+          <form
+            className="ask-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              run()
+            }}
           >
-            Clear
-          </button>
-        )}
-      </form>
-
-      {examples.length > 0 && turns.length === 0 && (
-        <div className="ask-examples">
-          {examples.map((ex) => (
-            <button
-              key={ex}
-              className="ask-chip"
-              onClick={() => {
-                setQ(ex)
-                run(ex)
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                // Ask on Enter directly. Don't rely on implicit form submission:
+                // the submit button is disabled while the field is empty, which
+                // suppresses it in some browsers. (Ignore IME composition.)
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  run()
+                }
               }}
-            >
-              {ex}
+              placeholder={turns.length > 0 ? 'Ask a follow-up…' : 'Ask a question…'}
+              aria-label="Ask about your spending"
+            />
+            <button type="submit" className="btn primary" disabled={busy || !q.trim()}>
+              Ask
             </button>
-          ))}
+          </form>
         </div>
       )}
 
-      {error && <div className="banner error">{error}</div>}
+      {!open && (
+        <button
+          className="ask-fab"
+          onClick={() => setOpen(true)}
+          aria-expanded={false}
+          aria-label="Open chat — ask about your spending"
+        >
+          <span className="ask-fab-cta">Click here to open chat</span>
+          <span className="ask-fab-dog">
+            <img src={retriever} alt="" />
+          </span>
+        </button>
+      )}
     </div>
   )
 }

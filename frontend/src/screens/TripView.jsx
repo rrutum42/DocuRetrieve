@@ -30,7 +30,6 @@ export default function TripView({ everyday = false }) {
 
   const [extracting, setExtracting] = useState(false)
   const [review, setReview] = useState(null) // { result, file }
-  const [askResult, setAskResult] = useState(null) // AskResponse | null
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function load() {
@@ -193,7 +192,6 @@ export default function TripView({ everyday = false }) {
                 ? (q, h) => api.askPersonal(q, h)
                 : (q, h) => api.askTrip(trip.id, q, h)
             }
-            onResult={setAskResult}
             examples={
               everyday
                 ? [
@@ -226,7 +224,6 @@ export default function TripView({ everyday = false }) {
           onUpdate={(u) =>
             setReceipts((rs) => rs.map((x) => (x.id === u.id ? u : x)))
           }
-          filterIds={askResult ? new Set(askResult.matched.map((m) => m.id)) : null}
         />
       </div>
 
