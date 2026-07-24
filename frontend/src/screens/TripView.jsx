@@ -191,11 +191,14 @@ export default function TripView({ everyday = false }) {
             onResult={setAskResult}
             examples={
               everyday
-                ? ['How much in total?', 'What did I spend on groceries?', 'How many receipts?']
+                ? [
+                    'How much in total?',
+                    'What did I spend by category?',
+                    'What are my 3 biggest expenses?',
+                  ]
                 : [
-                    'Who was involved in this trip?',
-                    'Tell me about this trip',
-                    'What did we spend on dining?',
+                    'How much did each person spend?',
+                    'What are the 3 biggest expenses?',
                     `How much is owed to ${persona.name}?`,
                   ]
             }

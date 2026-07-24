@@ -3,6 +3,7 @@
 // the answer — so every number is traceable to its evidence.
 
 import { useState } from 'react'
+import { money } from '../format'
 
 export default function AskBox({ ask, onResult, examples = [] }) {
   const [q, setQ] = useState('')
@@ -75,6 +76,22 @@ export default function AskBox({ ask, onResult, examples = [] }) {
       {result && (
         <div className="ask-answer">
           <div className="ask-answer-text">{result.answer}</div>
+          {result.breakdown?.length > 0 && (
+            <ul className="ask-breakdown">
+              {result.breakdown.map((row) => (
+                <li key={row.label} className="ask-breakdown-row">
+                  <span className="ask-breakdown-label">{row.label}</span>
+                  <span className="ask-breakdown-count">
+                    {row.count} receipt{row.count === 1 ? '' : 's'}
+                    {row.share > 0 && ` · ${Math.round(row.share)}%`}
+                  </span>
+                  <span className="ask-breakdown-value">
+                    {money(row.value, row.currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="ask-answer-foot">
             {result.matched.length > 0
               ? `Showing the ${result.matched.length} receipt${

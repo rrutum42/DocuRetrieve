@@ -115,3 +115,69 @@ including the adversarial cases that motivated earlier fixes:
   possible phrasing. Real-world paraphrase robustness would need a larger set.
 - The executor is fully deterministic and CI-gated; only the planner step
   depends on the model.
+
+## Update: `breakdown` operation (per-person / by-category splits)
+
+The query language gained a `breakdown` operation with a `group_by` dimension
+(`category | paid_by | currency | merchant`), so questions like "how much did
+each person spend?" and "what did we spend by category?" now have a valid target
+instead of collapsing to a single number.
+
+- **Executor gate:** the dataset grew to 18 cases (3 breakdown cases added) and
+  `tests/test_ask.py` covers grouping by category, by person, filter composition
+  ("break down dining by person"), the default-to-category path, and the empty
+  case. All deterministic and green in CI.
+- **Not yet re-scored live:** the answer/operation accuracy numbers above were
+  measured on the earlier 15 cases. The live planner mapping for the new
+  breakdown question shapes still needs a keyed `python -m evals.ask_eval`
+  run — those numbers are **not** claimed here yet. The planner prompt gained
+  few-shot examples to steer the weak `flash-lite` model toward the right
+  operation, but that's an intervention to *verify*, not a measured result.
+
+## Update: `compare`, top-N/sorted `list`, `share`, and `unsupported`
+
+Running the **live** planner over ~25 realistic paraphrases (not just the dataset
+phrasings) surfaced that operation classification was already solid — the wrong
+answers all came from the **query language being too narrow** to express the
+question. Four bounded additions close those gaps, all inside the same
+validated-spec / deterministic-executor design:
+
+| Question shape that used to fail | Now maps to |
+|---|---|
+| "did we spend more on dining **or** fuel?", "who spent more, Mom or Dad?", "how much **more** did Mom pay than Dad?" | `compare` (`group_by` + `compare_subjects`) → leader + the exact gap; equal totals answer "it's a tie" |
+| "what are our **3 biggest** expenses?" (was `max` → 1 row) | `list` with `sort=amount_desc, limit=3`, itemised |
+| "receipts **most to least** expensive" | `list` with `sort` (ordered, with amounts) |
+| "what **percent** did Dad cover?", "what fraction was food?" | `breakdown` — each `BreakdownRow` now carries a `share` (% of total) |
+| "what's the **weather**?", off-ledger chit-chat | `unsupported` — an honest refusal, never a fabricated number |
+
+- **Executor gate:** grew to **25 cases** and is green in CI
+  (`tests/test_ask.py` + the parametrized `tests/test_ask_eval.py`), including the
+  dining-vs-fuel **tie**, a compare subject with **zero** receipts (a real 0, not
+  a miss), top-N ordering, and the unsupported refusal. Fully deterministic.
+- **Planner model unchanged** (`flash-lite`): the diagnostic showed the model
+  wasn't the bottleneck, so the separate lighter quota bucket still stands. The
+  prompt gained the new operations, the `sort`/`limit`/`compare_subjects` fields,
+  and a worked example per shape.
+
+### Live re-score (measured, all 25 cases)
+
+| Metric | Result |
+|--------|--------|
+| operation accuracy | **25/25 (100%)** |
+| answer accuracy | **25/25 (100%)** |
+
+Every one of the new shapes mapped correctly and produced the right answer live:
+`compare` (Mom-vs-Dad → gap 100; dining-vs-fuel → tie), top-N `list`
+(3 biggest, sorted), the `share`/percentage breakdown, and the `unsupported`
+refusal ("what's the weather in Goa?").
+
+- **One real miss, found and fixed:** the first live run scored 24/25 — "what
+  percent did Mom pay?" chose `breakdown` (right) but *also* set `paid_by=Mom`,
+  which filtered the split to Mom alone and collapsed the denominator (₹450, her
+  own total, not her share of ₹800). Added a planner rule that percentage
+  questions must not filter to the subject; the re-run is 25/25. This is logged
+  honestly because it's exactly the kind of failure the eval exists to catch.
+- **Reproducibility:** planner outputs are cached in
+  `evals/fixtures/ask_predictions.json` and the dataset is synthetic, so this
+  number is committed and re-scorable offline with `python -m evals.ask_eval
+  score`.

@@ -199,6 +199,83 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
     `.env` and the private receipt images out of the image.
 - **Cut:** native-runtime deploy and the split frontend/backend hosting.
 
+## Ask: a `breakdown` operation, not free-form SQL
+
+- **Chose:** Extend the QuerySpec with a single new operation, `breakdown`, plus a
+  `group_by` dimension (`category | paid_by | currency | merchant`). The executor
+  filters as usual, then groups the matched receipts and sums `base_amount` per
+  group, returning sorted `BreakdownRow`s alongside the grand total.
+- **Problem it fixes:** the query language only had scalar aggregations, so
+  "how much did *each person* spend?" or "*by category*" had no valid target —
+  the planner was forced into `sum` (one number) or `list` (flat dump), which
+  reads as a wrong/unhelpful answer. Grouping was the missing primitive.
+- **Reasoning:**
+  - Stays inside the safe design: the model still only emits a validated spec, and
+    a deterministic Python executor does the arithmetic. No SQL, no injection
+    surface, exact numbers, every row still traceable to its receipts (`matched`).
+  - Composes with existing filters for free — "break down *dining* by person" is
+    `operation=breakdown, group_by=paid_by, category=dining`. No new filter code.
+  - Added worked question→spec examples to the planner prompt (few-shot). The
+    zero-shot prompt on the weak `flash-lite` planner was drifting on paraphrases;
+    examples disambiguate breakdown-vs-sum and the common phrasings.
+- **Honesty:** rows without a converted `base_amount` count toward a group's
+  tally but not its sum (same rule as the scalar sum path). The executor is
+  CI-gated (`tests/test_ask.py`, `tests/test_ask_eval.py`); the live planner
+  mapping for these new question shapes still needs a keyed `evals.ask_eval` run
+  to score — the committed live numbers predate this change.
+- **Cut:** multi-dimension grouping (group by person *and* category at once),
+  top-N, and cross-group comparison sentences — a single dimension covers the
+  common questions; the rest can follow if asked for.
+
+## Ask, part 2: the query language that real questions actually need
+
+- **Trigger:** ran the *live* planner over ~25 realistic paraphrases (not just the
+  friendly dataset phrasings) and watched where the answers were wrong. The
+  planner's *operation classification* was fine even on slang ("petrol/gas" →
+  `fuel`, "eating out" → `dining`); every failure was the **query language being
+  too narrow to express the question**. Concretely:
+  - "did we spend more on dining **or** fuel?" / "who spent more, Mom or Dad?" /
+    "how much **more** did Mom pay than Dad?" → collapsed to a whole-dimension
+    `breakdown` that never actually compares the two named things.
+  - "what are our **3 biggest** expenses?" → `max`, which returns exactly **one**.
+  - "receipts **most to least** expensive" → an unordered `list` printing just a
+    count, no amounts.
+  - "what **percent** did Dad cover?" → a breakdown with no share figure.
+  - "what's the **weather**?" → forced onto some arbitrary `sum`.
+- **Chose:** extend the same validated-spec / deterministic-executor design (no
+  SQL, still injection-proof, still traceable) with four bounded additions:
+  1. **`compare`** — `group_by` + `compare_subjects` (the named labels). Executor
+     sums each subject, sorts, and reports the leader and the **gap** (`value` =
+     difference between the top two, so it's checkable). A named subject with no
+     receipts is a real 0; equal totals answer "it's a tie". Empty subjects →
+     compare the top two automatically.
+  2. **`list` gains `sort` + `limit`** (`amount_desc|amount_asc|date_desc|date_asc`,
+     top-N). "3 biggest expenses" → `list, sort=amount_desc, limit=3`; the answer
+     now itemises the rows (merchant + amount) instead of just counting.
+  3. **`share` on `BreakdownRow`** — each group's percent of the breakdown total,
+     surfaced in the sentence and the UI, so "what percent did X cover" / "what
+     fraction was food" are answerable as a breakdown.
+  4. **`unsupported`** — an explicit honest-refusal operation for off-ledger
+     questions, instead of fabricating a number (golden rule 6).
+- **Reasoning:** each is one primitive the earlier design explicitly *cut*, added
+  the same way — the model only emits a validated `QuerySpec`, Python does all the
+  arithmetic, every answer still carries its `matched` evidence. New fields are
+  additive/optional, so the 18 existing cases and their specs are untouched.
+- **Kept the planner model** at `flash-lite`: the diagnostic showed classification
+  wasn't the bottleneck, so the cheaper, separate quota bucket (per the extraction
+  vs. ask split) still holds. The prompt gained the new operations, the
+  sort/limit/compare fields, and worked examples for each.
+- **Honesty:** the executor gate grew to **25 cases** and is green in CI
+  (`tests/test_ask.py`, `tests/test_ask_eval.py`), including the tie, the
+  zero-receipt subject, and the top-N ordering. The **live planner was re-scored
+  end-to-end: 25/25 operation and 25/25 answer accuracy** (`evals/RESULTS.md`).
+  The first live run was 24/25 — "what percent did Mom pay?" also set
+  `paid_by=Mom`, collapsing the breakdown's denominator; a prompt rule
+  (percentage questions don't filter to the subject) fixed it to 25/25. Logged
+  because that's the failure the eval exists to catch.
+- **Still cut:** multi-dimension grouping (person × category at once) and
+  arithmetic across more than two compare subjects beyond a simple ranking.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

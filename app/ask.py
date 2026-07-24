@@ -16,12 +16,16 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
-from .api_models import AskResponse, Persona, Receipt
+from .api_models import AskResponse, BreakdownRow, Persona, Receipt
 from .schemas import Category
 
 Operation = Literal[
-    "sum", "count", "average", "max", "min", "list", "balance", "members", "overview"
+    "sum", "count", "average", "max", "min", "list",
+    "balance", "members", "overview", "breakdown", "compare", "unsupported",
 ]
+
+GroupBy = Literal["category", "paid_by", "currency", "merchant"]
+Sort = Literal["amount_desc", "amount_asc", "date_desc", "date_asc"]
 
 _SYMBOLS = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}
 
@@ -40,6 +44,28 @@ class QuerySpec(BaseModel):
     merchant_contains: str | None = None
     date_from: date | None = None
     date_to: date | None = None
+    group_by: GroupBy | None = Field(
+        default=None,
+        description="The dimension to split/compare totals by (breakdown & compare).",
+    )
+    sort: Sort | None = Field(
+        default=None,
+        description="Ordering for a `list`: by amount or date, ascending or descending.",
+    )
+    limit: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description="Top-N cap for a `list` (e.g. 'the 3 biggest expenses' -> 3).",
+    )
+    compare_subjects: list[str] | None = Field(
+        default=None,
+        description=(
+            "For a `compare`: the two-or-more things being weighed against each "
+            "other, as their labels in `group_by` (e.g. ['Mom','Dad'] or "
+            "['dining','fuel']). Empty/absent -> compare the top two automatically."
+        ),
+    )
 
 
 class TripInfo(BaseModel):
@@ -252,6 +278,219 @@ def _answer_overview(
     )
 
 
+def _group_key(r: Receipt, group_by: GroupBy, personas: list[Persona]) -> str:
+    """The human label a receipt is bucketed under for a breakdown."""
+    if group_by == "category":
+        return r.category.value if r.category else "uncategorized"
+    if group_by == "paid_by":
+        return _persona_name(r.paid_by_persona_id, personas) if r.paid_by_persona_id else "unknown"
+    if group_by == "currency":
+        return (r.currency or "?").upper()
+    # merchant
+    return r.merchant or "unknown"
+
+
+def _answer_breakdown(
+    question: str,
+    spec: QuerySpec,
+    receipts: list[Receipt],
+    personas: list[Persona],
+    base_currency: str,
+) -> AskResponse:
+    """Split a total across a dimension (per person / category / currency /
+    merchant). Filters apply first, so 'break down dining by person' works."""
+    group_by = spec.group_by or "category"
+    matched = _filter(spec, receipts, personas)
+    desc = _describe(spec, personas)
+    resp = dict(question=question, operation="breakdown", currency=base_currency, value=None)
+
+    # Accumulate summed base_amount and a receipt count per group. Rows without a
+    # converted base_amount still count toward the group's tally but not its sum.
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for r in matched:
+        key = _group_key(r, group_by, personas)
+        counts[key] = counts.get(key, 0) + 1
+        if r.base_amount is not None:
+            sums[key] = sums.get(key, 0.0) + r.base_amount
+
+    if not matched:
+        return AskResponse(
+            **{**resp, "value": 0.0},
+            answer=f"No receipts to break down{desc}.",
+            matched=[],
+            breakdown=[],
+        )
+
+    grand = sum(sums.values())
+    rows = [
+        BreakdownRow(
+            label=key,
+            value=round(sums.get(key, 0.0), 2),
+            currency=base_currency,
+            count=counts[key],
+            share=round(100.0 * sums.get(key, 0.0) / grand, 1) if grand else 0.0,
+        )
+        for key in counts
+    ]
+    # Largest spend first; ties broken by label for a stable, readable order.
+    rows.sort(key=lambda row: (-row.value, row.label))
+
+    total = round(sum(row.value for row in rows), 2)
+    dim = {"paid_by": "person", "category": "category", "currency": "currency",
+           "merchant": "merchant"}[group_by]
+    top = rows[0]
+    # Naming the top group's share turns "what percent did Dad cover?" /
+    # "what fraction was food?" into a directly answerable breakdown.
+    pct = f" ({top.share:.0f}%)" if grand else ""
+    answer = (
+        f"{_money(total, base_currency)}{desc} across {len(rows)} "
+        f"{dim if len(rows) == 1 else dim + 's'} — "
+        f"{top.label} highest at {_money(top.value, base_currency)}{pct}."
+    )
+    return AskResponse(
+        **{**resp, "value": total}, answer=answer, matched=matched, breakdown=rows
+    )
+
+
+def _sorted(receipts: list[Receipt], sort: Sort | None) -> list[Receipt]:
+    """Order receipts for a `list`. Rows missing the sort key sink to the end so
+    a top-N never surfaces blanks. Default (no sort) keeps insertion order."""
+    if sort is None:
+        return receipts
+    if sort in ("amount_desc", "amount_asc"):
+        keyed = [r for r in receipts if r.base_amount is not None]
+        keyless = [r for r in receipts if r.base_amount is None]
+        keyed.sort(key=lambda r: r.base_amount, reverse=(sort == "amount_desc"))
+        return keyed + keyless
+    keyed = [r for r in receipts if r.purchase_date is not None]
+    keyless = [r for r in receipts if r.purchase_date is None]
+    keyed.sort(key=lambda r: r.purchase_date, reverse=(sort == "date_desc"))
+    return keyed + keyless
+
+
+def _receipt_label(r: Receipt, base_currency: str) -> str:
+    where = r.merchant or "a receipt"
+    amt = _money(r.base_amount, base_currency) if r.base_amount is not None else "—"
+    return f"{where} {amt}"
+
+
+def _answer_list(
+    question: str,
+    spec: QuerySpec,
+    receipts: list[Receipt],
+    personas: list[Persona],
+    base_currency: str,
+) -> AskResponse:
+    """A `list` answer, now sortable and limitable so 'the 3 biggest expenses'
+    and 'receipts from most to least expensive' return the right rows in the
+    right order — and the sentence itemises the top few instead of just counting.
+    """
+    matched = _filter(spec, receipts, personas)
+    matched = _sorted(matched, spec.sort)
+    if spec.limit is not None:
+        matched = matched[: spec.limit]
+    desc = _describe(spec, personas)
+    resp = dict(question=question, operation="list", currency=None, value=None)
+
+    n = len(matched)
+    if n == 0:
+        return AskResponse(**resp, answer=f"No receipts found{desc}.", matched=[])
+
+    # Itemise the leading rows (all of them when few, a preview when many) so the
+    # sentence carries the amounts, not just a bare count.
+    preview = matched[: min(n, spec.limit or 5)]
+    items = "; ".join(_receipt_label(r, base_currency) for r in preview)
+    head = f"{n} receipt{'s' if n != 1 else ''}{desc}"
+    answer = f"{head}: {items}." if items else f"{head}."
+    if n > len(preview):
+        answer = f"{head} — top {len(preview)}: {items}."
+    return AskResponse(**resp, answer=answer, matched=matched)
+
+
+def _answer_compare(
+    question: str,
+    spec: QuerySpec,
+    receipts: list[Receipt],
+    personas: list[Persona],
+    base_currency: str,
+) -> AskResponse:
+    """Weigh two (or more) subjects against each other in one dimension:
+    "who spent more, Mom or Dad?", "more on dining or fuel?", "how much more did
+    Mom pay than Dad?". `value` is the gap between the top two, so it's checkable.
+    """
+    group_by = spec.group_by or "paid_by"
+    matched = _filter(spec, receipts, personas)
+    resp = dict(question=question, operation="compare", currency=base_currency, value=None)
+
+    sums: dict[str, float] = {}
+    for r in matched:
+        if r.base_amount is None:
+            continue
+        key = _group_key(r, group_by, personas)
+        sums[key] = sums.get(key, 0.0) + r.base_amount
+
+    # Resolve the requested subjects to their group labels. A named subject that
+    # has no receipts is a real 0 (a member who paid nothing), not a miss.
+    subjects = spec.compare_subjects or []
+    resolved: list[tuple[str, float]] = []
+    for raw in subjects:
+        if group_by == "paid_by":
+            pid = _resolve_persona(raw, personas)
+            label = _persona_name(pid, personas) if pid else raw
+        else:
+            label = raw
+        # case-insensitive match against the labels actually present
+        hit = next((k for k in sums if k.lower() == label.lower()), None)
+        resolved.append((hit or label, sums.get(hit, 0.0) if hit else 0.0))
+
+    if len(resolved) < 2:
+        # No explicit pair -> compare the two biggest groups in the dimension.
+        resolved = sorted(sums.items(), key=lambda kv: -kv[1])[:2]
+
+    if len(resolved) < 2:
+        return AskResponse(
+            **resp, answer="I need two things to compare — try 'Mom vs Dad' or "
+            "'dining vs fuel'.", matched=[],
+        )
+
+    resolved.sort(key=lambda kv: -kv[1])
+    (top_label, top_val), (next_label, next_val) = resolved[0], resolved[1]
+    gap = round(top_val - next_val, 2)
+    # Only the receipts belonging to the compared subjects are the evidence.
+    names = {lbl.lower() for lbl, _ in resolved}
+    evidence = [r for r in matched if _group_key(r, group_by, personas).lower() in names]
+
+    parts = ", ".join(
+        f"{lbl} {_money(round(val, 2), base_currency)}" for lbl, val in resolved
+    )
+    if gap < 0.01:
+        answer = f"It's a tie — {parts}."
+        gap = 0.0
+    else:
+        answer = (
+            f"{top_label} spent more — {parts} "
+            f"({_money(gap, base_currency)} more)."
+        )
+    return AskResponse(**{**resp, "value": gap}, answer=answer, matched=evidence)
+
+
+def _answer_unsupported(question: str) -> AskResponse:
+    """Honest refusal (golden rule 6): the question is out of scope for a receipt
+    ledger — don't map it to an arbitrary number and pretend we understood."""
+    return AskResponse(
+        question=question,
+        operation="unsupported",
+        value=None,
+        answer=(
+            "I can only answer questions about the receipts on this ledger — "
+            "totals, who paid, categories, dates, and settle-up. Try rephrasing "
+            "around your spending."
+        ),
+        matched=[],
+    )
+
+
 def run_query(
     question: str,
     spec: QuerySpec,
@@ -269,6 +508,14 @@ def run_query(
         return _answer_balance(
             question, spec, receipts, personas, base_currency, member_ids
         )
+    if spec.operation == "breakdown":
+        return _answer_breakdown(question, spec, receipts, personas, base_currency)
+    if spec.operation == "compare":
+        return _answer_compare(question, spec, receipts, personas, base_currency)
+    if spec.operation == "list":
+        return _answer_list(question, spec, receipts, personas, base_currency)
+    if spec.operation == "unsupported":
+        return _answer_unsupported(question)
 
     matched = _filter(spec, receipts, personas)
     amounts = [r.base_amount for r in matched if r.base_amount is not None]
@@ -279,7 +526,7 @@ def run_query(
     if n == 0:
         # Zero matches is a *valid, answerable* result for sum/count — e.g. a real
         # trip member who paid for nothing paid exactly 0 — not a failure to
-        # understand. Only average/max/min/list have no meaningful zero.
+        # understand. Only average/max/min have no meaningful zero.
         if spec.operation == "sum":
             return AskResponse(
                 **{**resp, "value": 0.0, "currency": base_currency},
@@ -295,10 +542,6 @@ def run_query(
     if spec.operation == "count":
         answer = f"{n} receipt{'s' if n != 1 else ''}{desc}."
         return AskResponse(**{**resp, "value": float(n)}, answer=answer, matched=matched)
-
-    if spec.operation == "list":
-        answer = f"{n} receipt{'s' if n != 1 else ''}{desc}."
-        return AskResponse(**resp, answer=answer, matched=matched)
 
     if spec.operation == "average":
         if not amounts:
@@ -358,12 +601,47 @@ Rules:
     sum      -> "how much" (default)
     count    -> "how many", "is there any"
     average  -> "average / typical"
-    max      -> "biggest / most expensive"
-    min      -> "cheapest / smallest"
-    list     -> "show me / which"
+    max      -> "biggest / most expensive" (the SINGLE top one)
+    min      -> "cheapest / smallest" (the SINGLE lowest one)
+    list     -> "show me / which". Also for TOP-N and sorted lists: "the 3
+                biggest expenses", "receipts from most to least expensive",
+                "our smallest purchases". Set sort and limit (see below).
     balance  -> settle-up: "how much is owed to X", "how much does X owe", "is X settled up"
     members  -> who is on the trip: "who was involved", "who's on this trip", "who are the members"
     overview -> trip details / metadata: "tell me about this trip", "trip summary", "when was this trip", "give me an overview"
+    breakdown-> split a total across a dimension: "how much did EACH person spend",
+                "spending BY category", "break it down by merchant", "per-person totals",
+                "which category costs the most", "what PERCENT/FRACTION did X cover".
+                Set group_by (see below). Prefer this over sum/list whenever the
+                question asks for a per-group split or a share/percentage.
+    compare  -> weigh TWO (or more) named things against each other: "did we
+                spend more on dining OR fuel?", "who spent more, Mom or Dad?",
+                "how much MORE did Mom pay than Dad?". Set group_by to the
+                dimension and compare_subjects to the named things (see below).
+    unsupported-> the question is NOT about this ledger's receipts/spending
+                (weather, advice, the future, general chit-chat). Do not force a
+                number onto it.
+- For a "what PERCENT / SHARE / FRACTION did X ..." question, use breakdown over
+  the WHOLE dimension and do NOT also set the matching filter to X — the split
+  already contains X's row and its share, and filtering to X would drop the
+  denominator (you'd get X's own total, not X's share). e.g. "what percent did
+  Mom pay?" -> breakdown, group_by=paid_by, paid_by=null (NOT paid_by=Mom).
+- For breakdown AND compare, set group_by to the dimension:
+    category | paid_by | currency | merchant.
+  ("by category"->category, "each/per person"/"by who paid"->paid_by,
+   "by currency"->currency, "by store/merchant/vendor"->merchant.)
+  Filters still apply: "break down DINING by person" -> operation=breakdown,
+  group_by=paid_by, category=dining. Leave group_by null for sum/count/list/etc.
+- For compare, also set compare_subjects to the labels being weighed, matching
+  group_by: people names for paid_by ("Mom or Dad" -> ["Mom","Dad"]), category
+  values for category ("dining vs fuel" -> ["dining","fuel"]). Leave it null only
+  if the question says "compare everyone/each" without naming which two.
+- For a top-N or sorted list, set:
+    sort: amount_desc ("biggest/most expensive/highest"), amount_asc
+          ("cheapest/smallest/lowest"), date_desc ("latest/most recent"),
+          date_asc ("earliest/oldest").
+    limit: the N in "top N / N biggest" (e.g. 3). Leave null if no count is given.
+  Leave sort and limit null for every non-list operation.
 - For a balance question, set paid_by to the person the question is about.
 - Only set category to one of the listed categories, else leave null.
 - Whenever the question is about what a specific person paid, owes, or spent
@@ -376,6 +654,23 @@ Rules:
 - Resolve relative dates ("last month", "in June", "this week") to date_from/date_to
   using today's date. Leave both null if no time filter.
 - merchant_contains: a store/vendor name if the question names one, else null.
+
+Examples (question -> spec):
+- "how much did we spend?" -> {{"operation": "sum"}}
+- "how much did each of us spend?" -> {{"operation": "breakdown", "group_by": "paid_by"}}
+- "what did we spend by category?" -> {{"operation": "breakdown", "group_by": "category"}}
+- "what percent did Mom pay?" -> {{"operation": "breakdown", "group_by": "paid_by"}}
+- "break down dining per person" -> {{"operation": "breakdown", "group_by": "paid_by", "category": "dining"}}
+- "which store did we spend the most at?" -> {{"operation": "breakdown", "group_by": "merchant"}}
+- "did we spend more on dining or fuel?" -> {{"operation": "compare", "group_by": "category", "compare_subjects": ["dining", "fuel"]}}
+- "who spent more, Mom or Dad?" -> {{"operation": "compare", "group_by": "paid_by", "compare_subjects": ["Mom", "Dad"]}}
+- "how much more did Mom pay than Dad?" -> {{"operation": "compare", "group_by": "paid_by", "compare_subjects": ["Mom", "Dad"]}}
+- "the 3 biggest expenses" -> {{"operation": "list", "sort": "amount_desc", "limit": 3}}
+- "receipts from most to least expensive" -> {{"operation": "list", "sort": "amount_desc"}}
+- "how much did Dad spend?" -> {{"operation": "sum", "paid_by": "Dad"}}
+- "show me the fuel receipts" -> {{"operation": "list", "category": "fuel"}}
+- "what's the weather in Goa?" -> {{"operation": "unsupported"}}
+
 Return ONLY the JSON."""
 
 

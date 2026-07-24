@@ -173,6 +173,222 @@ def test_currency_filter():
     assert r.matched[0].merchant == "US Diner"
 
 
+# --- breakdown (group_by) ---------------------------------------------------
+
+def test_breakdown_by_category_sums_each_group():
+    r = run_query(
+        "spend by category",
+        QuerySpec(operation="breakdown", group_by="category"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    rows = {row.label: row for row in r.breakdown}
+    assert rows["dining"].value == 150.0 and rows["dining"].count == 2
+    assert rows["groceries"].value == 200.0 and rows["groceries"].count == 1
+    assert r.value == 350.0                 # rows sum to the grand total
+    assert len(r.matched) == 3              # all receipts remain traceable
+    # sorted largest-first
+    assert r.breakdown[0].label == "groceries"
+
+
+def test_breakdown_by_person_uses_names():
+    r = run_query(
+        "how much did each of us spend",
+        QuerySpec(operation="breakdown", group_by="paid_by"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    rows = {row.label: row.value for row in r.breakdown}
+    assert rows == {"Mom": 300.0, "Dad": 50.0}
+    assert "Mom" in r.answer  # top spender named in the sentence
+
+
+def test_breakdown_respects_filters():
+    # break down dining by person -> only the two dining receipts
+    r = run_query(
+        "break down dining by person",
+        QuerySpec(operation="breakdown", group_by="paid_by", category="dining"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    rows = {row.label: row.value for row in r.breakdown}
+    assert rows == {"Mom": 100.0, "Dad": 50.0}
+    assert len(r.matched) == 2
+
+
+def test_breakdown_defaults_group_by_to_category():
+    r = run_query(
+        "break it down", QuerySpec(operation="breakdown"), RECEIPTS, PEOPLE, "INR"
+    )
+    assert {row.label for row in r.breakdown} == {"dining", "groceries"}
+
+
+def test_breakdown_with_no_receipts_is_empty_not_crash():
+    r = run_query(
+        "spend by category",
+        QuerySpec(operation="breakdown", group_by="category", category="fuel"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert r.breakdown == []
+    assert r.value == 0.0
+    assert "No receipts" in r.answer
+
+
+def test_breakdown_rows_carry_percent_share():
+    r = run_query(
+        "spend by category",
+        QuerySpec(operation="breakdown", group_by="category"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    rows = {row.label: row for row in r.breakdown}
+    # groceries 200 / 350 total = 57.1%, dining 150 / 350 = 42.9%
+    assert rows["groceries"].share == 57.1
+    assert rows["dining"].share == 42.9
+    assert "%" in r.answer  # top group's share is surfaced in the sentence
+
+
+# --- list: sort + limit (top-N) ---------------------------------------------
+
+def test_list_sorted_amount_desc_orders_and_itemizes():
+    r = run_query(
+        "receipts most to least expensive",
+        QuerySpec(operation="list", sort="amount_desc"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    amounts = [m.base_amount for m in r.matched]
+    assert amounts == [200.0, 100.0, 50.0]  # descending
+    assert "Whole Foods" in r.answer  # itemized, not just a count
+
+
+def test_list_top_n_limits_matched_rows():
+    r = run_query(
+        "the 2 biggest expenses",
+        QuerySpec(operation="list", sort="amount_desc", limit=2),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert len(r.matched) == 2
+    assert [m.base_amount for m in r.matched] == [200.0, 100.0]
+
+
+def test_list_sort_ascending_for_cheapest():
+    r = run_query(
+        "our cheapest purchase",
+        QuerySpec(operation="list", sort="amount_asc", limit=1),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert len(r.matched) == 1 and r.matched[0].base_amount == 50.0
+
+
+def test_list_empty_is_honest():
+    r = run_query(
+        "show fuel receipts",
+        QuerySpec(operation="list", category="fuel"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert r.matched == [] and "No receipts" in r.answer
+
+
+# --- compare operation ------------------------------------------------------
+
+def test_compare_two_people_reports_gap_and_leader():
+    # Mom paid 300, Dad 50 -> Mom leads by 250
+    r = run_query(
+        "who spent more, Mom or Dad?",
+        QuerySpec(operation="compare", group_by="paid_by", compare_subjects=["Mom", "Dad"]),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert r.operation == "compare"
+    assert r.value == 250.0
+    assert "Mom spent more" in r.answer
+    assert len(r.matched) == 3  # all three receipts belong to Mom or Dad
+
+
+def test_compare_two_categories():
+    r = run_query(
+        "more on dining or groceries?",
+        QuerySpec(
+            operation="compare", group_by="category",
+            compare_subjects=["dining", "groceries"],
+        ),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    # dining 150 vs groceries 200 -> groceries leads by 50
+    assert r.value == 50.0
+    assert "groceries" in r.answer.lower()
+
+
+def test_compare_subject_with_no_receipts_counts_as_zero():
+    # Compare Dad (50) with a real member who paid nothing here.
+    only_dad = [rcpt("dad", 50.0)]
+    r = run_query(
+        "who spent more, Mom or Dad?",
+        QuerySpec(operation="compare", group_by="paid_by", compare_subjects=["Mom", "Dad"]),
+        only_dad,
+        PEOPLE,
+        "INR",
+    )
+    assert r.value == 50.0  # Dad 50 - Mom 0
+    assert "Dad spent more" in r.answer
+
+
+def test_compare_without_subjects_uses_top_two():
+    r = run_query(
+        "compare our spenders",
+        QuerySpec(operation="compare", group_by="paid_by"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert r.value == 250.0  # Mom 300 vs Dad 50
+
+
+def test_compare_tie():
+    even = [rcpt("mom", 100.0), rcpt("dad", 100.0)]
+    r = run_query(
+        "who spent more?",
+        QuerySpec(operation="compare", group_by="paid_by", compare_subjects=["Mom", "Dad"]),
+        even,
+        PEOPLE,
+        "INR",
+    )
+    assert r.value == 0.0 and "tie" in r.answer.lower()
+
+
+# --- unsupported (honest refusal) -------------------------------------------
+
+def test_unsupported_question_is_refused_not_faked():
+    r = run_query(
+        "what's the weather like?",
+        QuerySpec(operation="unsupported"),
+        RECEIPTS,
+        PEOPLE,
+        "INR",
+    )
+    assert r.operation == "unsupported"
+    assert r.value is None
+    assert r.matched == []
+    assert "receipts" in r.answer.lower()
+
+
 # --- settle-up (balance operation) ------------------------------------------
 
 MEMBERS = ["mom", "dad"]

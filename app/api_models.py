@@ -153,6 +153,16 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class BreakdownRow(BaseModel):
+    """One group in a breakdown answer (e.g. one person, one category)."""
+
+    label: str
+    value: float  # summed base_amount for the group
+    currency: str
+    count: int  # how many receipts fell in the group
+    share: float = 0.0  # this group's percent of the breakdown total (0–100)
+
+
 class AskResponse(BaseModel):
     question: str
     answer: str  # a human sentence
@@ -160,3 +170,4 @@ class AskResponse(BaseModel):
     value: float | None = None  # the computed number, when numeric
     currency: str | None = None
     matched: list[Receipt] = Field(default_factory=list)  # the receipts behind it
+    breakdown: list[BreakdownRow] = Field(default_factory=list)  # grouped rows, if any

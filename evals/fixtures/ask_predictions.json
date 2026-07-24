@@ -133,5 +133,144 @@
     "merchant_contains": null,
     "date_from": null,
     "date_to": null
+  },
+  "How much did each person spend?": {
+    "operation": "breakdown",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "paid_by",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": null
+  },
+  "What did we spend by category?": {
+    "operation": "breakdown",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "category",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": null
+  },
+  "Break down dining by person.": {
+    "operation": "breakdown",
+    "category": "dining",
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "paid_by",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": null
+  },
+  "Who spent more, Mom or Dad?": {
+    "operation": "compare",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "paid_by",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": [
+      "Mom",
+      "Dad"
+    ]
+  },
+  "How much more did Mom pay than Dad?": {
+    "operation": "compare",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "paid_by",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": [
+      "Mom",
+      "Dad"
+    ]
+  },
+  "Did we spend more on dining or fuel?": {
+    "operation": "compare",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "category",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": [
+      "dining",
+      "fuel"
+    ]
+  },
+  "What are the 3 biggest expenses?": {
+    "operation": "list",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": null,
+    "sort": "amount_desc",
+    "limit": 3,
+    "compare_subjects": null
+  },
+  "List receipts from most to least expensive.": {
+    "operation": "list",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": null,
+    "sort": "amount_desc",
+    "limit": null,
+    "compare_subjects": null
+  },
+  "What's the weather in Goa?": {
+    "operation": "unsupported",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": null,
+    "sort": null,
+    "limit": null,
+    "compare_subjects": null
+  },
+  "What percent did Mom pay?": {
+    "operation": "breakdown",
+    "category": null,
+    "paid_by": null,
+    "currency": null,
+    "merchant_contains": null,
+    "date_from": null,
+    "date_to": null,
+    "group_by": "paid_by",
+    "sort": null,
+    "limit": null,
+    "compare_subjects": null
   }
 }
