@@ -66,6 +66,13 @@ class QuerySpec(BaseModel):
             "['dining','fuel']). Empty/absent -> compare the top two automatically."
         ),
     )
+    disputed: bool | None = Field(
+        default=None,
+        description=(
+            "Filter by dispute status: true = only receipts a member flagged as "
+            "disputed, false = only undisputed. Null = no dispute filter."
+        ),
+    )
 
 
 class TripInfo(BaseModel):
@@ -132,6 +139,9 @@ def _filter(spec: QuerySpec, receipts: list[Receipt], personas: list[Persona]):
     if spec.paid_by:
         pid = _resolve_persona(spec.paid_by, personas)
         out = [r for r in out if r.paid_by_persona_id == pid] if pid else []
+    if spec.disputed is not None:
+        # A receipt is disputed iff a member flagged it (disputed_by_persona_id set).
+        out = [r for r in out if bool(r.disputed_by_persona_id) == spec.disputed]
     return out
 
 
@@ -145,6 +155,10 @@ def _describe(spec: QuerySpec, personas: list[Persona]) -> str:
         bits.append(f"at {spec.merchant_contains}")
     if spec.paid_by:
         bits.append(f"paid by {spec.paid_by}")
+    if spec.disputed is True:
+        bits.append("flagged as disputed")
+    elif spec.disputed is False:
+        bits.append("not disputed")
     if spec.date_from and spec.date_to:
         bits.append(f"between {spec.date_from} and {spec.date_to}")
     elif spec.date_from:
@@ -381,7 +395,12 @@ def _sorted(receipts: list[Receipt], sort: Sort | None) -> list[Receipt]:
 def _receipt_label(r: Receipt, base_currency: str) -> str:
     where = r.merchant or "a receipt"
     amt = _money(r.base_amount, base_currency) if r.base_amount is not None else "—"
-    return f"{where} {amt}"
+    label = f"{where} {amt}"
+    if r.disputed_by_persona_id:
+        # Surface the flag (and the reason, if given) so a disputed-receipts list
+        # is actually informative, not just names and amounts.
+        label += f" (disputed: {r.dispute_reason})" if r.dispute_reason else " (disputed)"
+    return label
 
 
 def _answer_list(
@@ -668,6 +687,13 @@ Rules:
 - Resolve relative dates ("last month", "in June", "this week") to date_from/date_to
   using today's date. Leave both null if no time filter.
 - merchant_contains: a store/vendor name if the question names one, else null.
+- disputed: set true for questions about DISPUTED / flagged / contested /
+  challenged / questioned receipts ("which receipts are disputed?", "any
+  disputes?", "what did we flag?", "how much is disputed?"); set false for
+  explicitly undisputed ("which aren't disputed"); else null. Combine with the
+  operation as usual: "which receipts are disputed" -> list+disputed=true,
+  "how many disputes" -> count+disputed=true, "how much is disputed" ->
+  sum+disputed=true.
 - FOLLOW-UPS: if a "Recent conversation" block is shown below and the CURRENT
   question is a fragment that refers back to it ("and on dining?", "what about
   Bob?", "just in June", "by category instead", "only USD ones"), resolve it into
@@ -689,6 +715,8 @@ Examples (question -> spec):
 - "receipts from most to least expensive" -> {{"operation": "list", "sort": "amount_desc"}}
 - "how much did Dad spend?" -> {{"operation": "sum", "paid_by": "Dad"}}
 - "show me the fuel receipts" -> {{"operation": "list", "category": "fuel"}}
+- "which receipts are disputed?" -> {{"operation": "list", "disputed": true}}
+- "how many disputes are there?" -> {{"operation": "count", "disputed": true}}
 - "what's the weather in Goa?" -> {{"operation": "unsupported"}}
 - "what day is it today?" -> {{"operation": "unsupported"}}
 

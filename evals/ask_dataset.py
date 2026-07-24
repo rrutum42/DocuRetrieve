@@ -159,4 +159,9 @@ CASES: list[AskCase] = [
             "unsupported", None, matched=0,
             note="current-date question must NOT be mistaken for the trip's dates "
                  "(overview) — regression from a real live miss"),
+    # --- disputes: filter by a member-flagged receipt ---------------------------
+    AskCase("Are any receipts disputed?",
+            QuerySpec(operation="count", disputed=True),
+            "count", 0.0, matched=0,
+            note="dispute filter; this fixture has none -> honest 0"),
 ]

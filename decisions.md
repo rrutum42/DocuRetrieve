@@ -360,6 +360,23 @@ what I chose, what I seriously considered, why, and what I deliberately cut.
   cross-member chat threads — both give up guarantees or add surface for a
   feature the context-carry approach already delivers.
 
+## Ask: query disputes; optimistic chat send
+
+- **Disputes are queryable now.** A trip member can flag a receipt as disputed
+  (`disputed_by_persona_id` + `dispute_reason`), but the ask couldn't see it.
+  Added a `disputed: bool | None` filter to `QuerySpec` that composes with the
+  existing operations — "which receipts are disputed?" (list), "how many
+  disputes?" (count), "how much is disputed?" (sum). Same validated-spec /
+  deterministic-executor design; a disputed-receipts list also surfaces the
+  reason so it's actually useful. Executor gate +1 case (27); verified live
+  against the real trip's flagged receipt.
+- **Chat send is optimistic.** The question now appears in the thread the instant
+  you press Enter (rendered with a "Thinking…" placeholder), and the answer fills
+  in when the planner returns — instead of the whole turn waiting on the round
+  trip. Errors land in the thread in place of the pending answer. Pending turns
+  aren't persisted to sessionStorage. Verified: at 150 ms post-Enter the question
+  is on screen, input cleared, answer not yet arrived.
+
 ---
 
 <!-- Add new decisions above this line as they happen. -->

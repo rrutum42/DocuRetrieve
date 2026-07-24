@@ -1142,6 +1142,11 @@ select:focus {
   color: var(--ink-soft);
   font-size: 12px;
 }
+.ask-answer-error {
+  background: #fdecea;
+  border-color: #f0c3bd;
+  color: #a3352a;
+}
 
 /* input row pinned to the bottom of the panel */
 .ask-form {

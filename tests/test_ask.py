@@ -173,6 +173,68 @@ def test_currency_filter():
     assert r.matched[0].merchant == "US Diner"
 
 
+# --- disputed filter --------------------------------------------------------
+
+def _disputed(r, reason="looks fake"):
+    return r.model_copy(update={"disputed_by_persona_id": "mom", "dispute_reason": reason})
+
+
+DISPUTE_SET = [
+    _disputed(rcpt("mom", 100.0, merchant="Sketchy Bar"), reason="never went here"),
+    rcpt("dad", 50.0, merchant="Cafe"),
+    rcpt("mom", 200.0, merchant="BigBasket"),
+]
+
+
+def test_list_disputed_only():
+    r = run_query(
+        "which receipts are disputed?",
+        QuerySpec(operation="list", disputed=True),
+        DISPUTE_SET, PEOPLE, "INR",
+    )
+    assert len(r.matched) == 1 and r.matched[0].merchant == "Sketchy Bar"
+    assert "disputed" in r.answer.lower()
+    assert "never went here" in r.answer  # reason surfaced in the itemization
+
+
+def test_count_disputed():
+    r = run_query(
+        "how many disputes?",
+        QuerySpec(operation="count", disputed=True),
+        DISPUTE_SET, PEOPLE, "INR",
+    )
+    assert r.value == 1.0
+
+
+def test_sum_disputed_amount():
+    r = run_query(
+        "how much is disputed?",
+        QuerySpec(operation="sum", disputed=True),
+        DISPUTE_SET, PEOPLE, "INR",
+    )
+    assert r.value == 100.0
+
+
+def test_filter_undisputed_excludes_flagged():
+    r = run_query(
+        "undisputed total",
+        QuerySpec(operation="sum", disputed=False),
+        DISPUTE_SET, PEOPLE, "INR",
+    )
+    assert r.value == 250.0  # 50 + 200, the disputed 100 excluded
+    assert len(r.matched) == 2
+
+
+def test_count_disputed_when_none_is_zero():
+    # RECEIPTS has no disputes -> an honest 0, not a failure
+    r = run_query(
+        "any disputes?",
+        QuerySpec(operation="count", disputed=True),
+        RECEIPTS, PEOPLE, "INR",
+    )
+    assert r.value == 0.0
+
+
 # --- breakdown (group_by) ---------------------------------------------------
 
 def test_breakdown_by_category_sums_each_group():

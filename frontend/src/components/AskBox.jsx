@@ -26,7 +26,7 @@ function loadThread(storageKey) {
 function AnswerCard({ result }) {
   const matched = result.matched?.length || 0
   return (
-    <div className="ask-answer">
+    <div className={'ask-answer' + (result.error ? ' ask-answer-error' : '')}>
       <div className="ask-answer-text">{result.answer}</div>
       {result.breakdown?.length > 0 && (
         <ul className="ask-breakdown">
@@ -57,8 +57,8 @@ export default function AskBox({ ask, examples = [], storageKey }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
-  // The conversation: [{ question, result }], oldest first.
+  // The conversation: [{ question, result }], oldest first. A turn with
+  // result === null is still awaiting its answer.
   const [turns, setTurns] = useState(() => loadThread(storageKey))
   const threadRef = useRef(null)
   const inputRef = useRef(null)
@@ -67,14 +67,16 @@ export default function AskBox({ ask, examples = [], storageKey }) {
   // leak one container's conversation into another.
   useEffect(() => {
     setTurns(loadThread(storageKey))
-    setError(null)
   }, [storageKey])
 
-  // Persist after every change so a reload within the session keeps the thread.
+  // Persist completed turns so a reload within the session keeps the thread.
+  // Pending turns (result === null) are dropped — an in-flight question isn't
+  // worth restoring.
   useEffect(() => {
     if (!storageKey) return
     try {
-      sessionStorage.setItem(storageKey, JSON.stringify(turns))
+      const done = turns.filter((t) => t.result)
+      sessionStorage.setItem(storageKey, JSON.stringify(done))
     } catch {
       /* storage full / unavailable — the in-memory thread still works */
     }
@@ -91,16 +93,29 @@ export default function AskBox({ ask, examples = [], storageKey }) {
     const text = (question ?? q).trim()
     if (!text || busy) return
     setBusy(true)
-    setError(null)
+    // Build history from completed turns before we add the pending one.
     const history = turns
+      .filter((t) => t.result)
       .slice(-HISTORY_TURNS)
       .map((t) => ({ question: t.question, answer: t.result.answer }))
+    // Show the question immediately (result === null renders as "Thinking…");
+    // the answer fills in when it arrives. Don't make the user wait to see it.
+    setQ('')
+    setTurns((prev) => [...prev, { question: text, result: null, pending: true }])
     try {
       const res = await ask(text, history)
-      setTurns((prev) => [...prev, { question: text, result: res }])
-      setQ('')
+      setTurns((prev) =>
+        prev.map((t) => (t.pending ? { question: t.question, result: res } : t)),
+      )
     } catch (e) {
-      setError(e.message)
+      // Land the error in the thread, in place of the pending answer.
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.pending
+            ? { question: t.question, result: { answer: e.message, matched: [], error: true } }
+            : t,
+        ),
+      )
     } finally {
       setBusy(false)
     }
@@ -109,7 +124,6 @@ export default function AskBox({ ask, examples = [], storageKey }) {
   function clear() {
     setTurns([])
     setQ('')
-    setError(null)
     if (storageKey) sessionStorage.removeItem(storageKey)
   }
 
@@ -162,12 +176,14 @@ export default function AskBox({ ask, examples = [], storageKey }) {
               turns.map((t, i) => (
                 <div key={i} className="ask-turn">
                   <div className="ask-question">{t.question}</div>
-                  <AnswerCard result={t.result} />
+                  {t.result ? (
+                    <AnswerCard result={t.result} />
+                  ) : (
+                    <div className="ask-typing">Thinking…</div>
+                  )}
                 </div>
               ))
             )}
-            {busy && <div className="ask-typing">Thinking…</div>}
-            {error && <div className="banner error">{error}</div>}
           </div>
 
           <form
